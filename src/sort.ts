@@ -37,11 +37,7 @@ function sortStrip(pixels: Pixel[], opts: SortOptions): Pixel[] {
  * For rows (axis = 'x'): stripIndex is y, position along strip is x.
  * For cols (axis = 'y'): stripIndex is x, position along strip is y.
  */
-function getMaskRange(
-  rect: Rect,
-  stripIndex: number,
-  axis: 'x' | 'y',
-): [number, number] | null {
+function getMaskRange(rect: Rect, stripIndex: number, axis: 'x' | 'y'): [number, number] | null {
   if (axis === 'x') {
     if (stripIndex < rect.y1 || stripIndex > rect.y2) return null;
     return [rect.x1, rect.x2 + 1];

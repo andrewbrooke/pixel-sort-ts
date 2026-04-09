@@ -1,6 +1,16 @@
+<div align="center">
+
+<img src="web/app/icon.png" alt="pixel-sort icon" width="64" />
+
 # pixel-sort
 
-A configurable pixel sorting CLI tool. Pixel sorting is a glitch art technique that sorts pixels within an image by a chosen property (brightness, hue, saturation, etc.), producing streaked and distorted visual effects.
+A configurable pixel sorting CLI and web tool. Pixel sorting is a glitch art technique that rearranges pixels within an image according to a chosen property — brightness, hue, saturation, and more — producing streaked, smeared, and distorted visual effects.
+
+|              Original              |                 Sorted                  |
+| :--------------------------------: | :-------------------------------------: |
+| ![original](examples/example1.jpg) | ![sorted](examples/example1_sorted.jpg) |
+
+</div>
 
 ## Install
 
@@ -36,7 +46,7 @@ The input image is never modified. Output is written to a new file named after t
 | `--hi`            | `0.8`        | Upper brightness bound for `threshold` mode (0–1)                                                       |
 | `-r, --reverse`   | `false`      | Sort in descending order                                                                                |
 | `--max-len`       | `200`        | Maximum interval length in pixels for `random` mode                                                     |
-| `--exclude`       | —            | Protect a rectangle from sorting: `x1,y1,x2,y2` in pixel coordinates (inclusive)                       |
+| `--exclude`       | —            | Protect a rectangle from sorting: `x1,y1,x2,y2` in pixel coordinates (inclusive)                        |
 | `--invert-mask`   | `false`      | Reverse the exclude mask — sort **only** inside the rectangle instead of outside it                     |
 | `-o, --output`    | auto         | Output file path                                                                                        |
 

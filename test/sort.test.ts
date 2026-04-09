@@ -240,8 +240,6 @@ describe('sort: sortRows() — invert mask', () => {
   it('sorts ONLY pixels inside the rectangle, leaving outside rows untouched', () => {
     // 3 rows × 3 cols. Mask covers row 1 only (y1=1, y2=1).
     // Rows 0 and 2 must be completely unchanged.
-    const row0 = [255, 255, 255, 255, 0, 0, 0, 255, 128, 128, 128, 255] as const;
-    const row2 = [255, 255, 255, 255, 0, 0, 0, 255, 255, 255, 0, 255] as const;
     const buf = makeBuffer(
       [255, 255, 255, 255],
       [0, 0, 0, 255],
