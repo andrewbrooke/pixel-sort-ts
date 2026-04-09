@@ -5,6 +5,7 @@ import path from 'path';
 import { readImage, writeImage } from './image';
 import { sortRows, sortColumns } from './sort';
 import { Direction, SortKey, IntervalMode, SortOptions } from './types';
+import type { Rect } from './types';
 import { DIRECTIONS, SORT_KEYS, INTERVAL_MODES, DEFAULTS } from './constants';
 
 const DIR_ABBREV: Record<Direction, string> = { horizontal: 'h', vertical: 'v', both: 'b' };
@@ -18,6 +19,20 @@ const KEY_ABBREV: Record<SortKey, string> = {
   blue: 'blu',
 };
 const MODE_ABBREV: Record<IntervalMode, string> = { full: 'full', threshold: 'thr', random: 'rnd' };
+
+function parseExclude(value: string): Rect {
+  const parts = value.split(',').map(Number);
+  if (parts.length !== 4 || parts.some(isNaN)) {
+    console.error('--exclude must be four comma-separated integers: x1,y1,x2,y2');
+    process.exit(1);
+  }
+  const [x1, y1, x2, y2] = parts;
+  if (x1 > x2 || y1 > y2) {
+    console.error('--exclude: x1 must be <= x2 and y1 must be <= y2');
+    process.exit(1);
+  }
+  return { x1, y1, x2, y2 };
+}
 
 function formatModeDetail(opts: SortOptions): string {
   if (opts.mode === 'threshold') return ` [${opts.lo}–${opts.hi}]`;
@@ -34,6 +49,7 @@ function defaultOutputPath(input: string, opts: SortOptions): string {
   if (opts.mode === 'threshold') parts.push(`${opts.lo}-${opts.hi}`);
   if (opts.mode === 'random') parts.push(`${opts.maxLen}`);
   if (opts.reverse) parts.push('r');
+  if (opts.exclude) parts.push(opts.excludeInvert ? 'inv' : 'excl');
 
   return path.join(path.dirname(input), `${base}_${parts.join('_')}${ext}`);
 }
@@ -55,6 +71,8 @@ program
     parseInt,
     DEFAULTS.maxLen,
   )
+  .option('--exclude <x1,y1,x2,y2>', 'Exclude a rectangle from sorting (pixel coordinates)')
+  .option('--invert-mask', 'Sort ONLY inside the --exclude rectangle instead of outside it')
   .action(async (input: string, opts) => {
     if (!DIRECTIONS.includes(opts.direction)) {
       console.error(`Invalid direction. Choose: ${DIRECTIONS.join(', ')}`);
@@ -77,6 +95,8 @@ program
       hi: opts.hi,
       reverse: opts.reverse,
       maxLen: opts.maxLen,
+      exclude: opts.exclude ? parseExclude(opts.exclude as string) : null,
+      excludeInvert: !!opts.invertMask,
     };
 
     const output = opts.output ?? defaultOutputPath(input, sortOpts);
@@ -92,8 +112,11 @@ program
     const { data, width, height } = image;
 
     console.log(`${path.basename(input)}  ${width}x${height}`);
+    const excludeStr = sortOpts.exclude
+      ? ` / ${sortOpts.excludeInvert ? 'invert-mask' : 'exclude'} [${sortOpts.exclude.x1},${sortOpts.exclude.y1},${sortOpts.exclude.x2},${sortOpts.exclude.y2}]`
+      : '';
     console.log(
-      `${opts.direction} / ${opts.key} / ${opts.mode}${formatModeDetail(sortOpts)}${opts.reverse ? ' / reversed' : ''}`,
+      `${opts.direction} / ${opts.key} / ${opts.mode}${formatModeDetail(sortOpts)}${opts.reverse ? ' / reversed' : ''}${excludeStr}`,
     );
 
     if (opts.direction === 'horizontal' || opts.direction === 'both') {

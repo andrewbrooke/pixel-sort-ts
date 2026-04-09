@@ -20,4 +20,6 @@ export const DEFAULTS: SortOptions = {
   hi: 0.8,
   reverse: false,
   maxLen: 200,
+  exclude: null,
+  excludeInvert: false,
 };
