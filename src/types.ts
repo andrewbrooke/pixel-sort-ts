@@ -11,6 +11,14 @@ export interface Pixel {
   a: number;
 }
 
+/** Axis-aligned rectangle in pixel coordinates (inclusive on all sides). */
+export interface Rect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface SortOptions {
   direction: Direction;
   key: SortKey;
@@ -19,4 +27,7 @@ export interface SortOptions {
   hi: number;
   reverse: boolean;
   maxLen: number;
+  exclude: Rect | null;
+  /** When true, sort ONLY inside the excluded rect instead of outside it. */
+  excludeInvert: boolean;
 }

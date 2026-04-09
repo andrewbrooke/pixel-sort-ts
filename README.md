@@ -36,6 +36,8 @@ The input image is never modified. Output is written to a new file named after t
 | `--hi`            | `0.8`        | Upper brightness bound for `threshold` mode (0–1)                                                       |
 | `-r, --reverse`   | `false`      | Sort in descending order                                                                                |
 | `--max-len`       | `200`        | Maximum interval length in pixels for `random` mode                                                     |
+| `--exclude`       | —            | Protect a rectangle from sorting: `x1,y1,x2,y2` in pixel coordinates (inclusive)                       |
+| `--invert-mask`   | `false`      | Reverse the exclude mask — sort **only** inside the rectangle instead of outside it                     |
 | `-o, --output`    | auto         | Output file path                                                                                        |
 
 ### Interval modes
@@ -54,6 +56,10 @@ The input image is never modified. Output is written to a new file named after t
 | `lightness`              | HSL lightness                                    |
 | `red` / `green` / `blue` | Raw channel value                                |
 
+### Exclude mask
+
+`--exclude x1,y1,x2,y2` protects a rectangular region from sorting. By default the area inside the rectangle is left untouched and everything outside is sorted normally. Adding `--invert-mask` flips this — only pixels inside the rectangle are sorted, everything outside is left untouched.
+
 ## Examples
 
 ```bash
@@ -71,6 +77,12 @@ pixel-sort photo.jpg -m random --max-len 300 -r -o out.png
 
 # Full horizontal sort by red channel
 pixel-sort photo.jpg -k red -m full
+
+# Protect a subject in the centre from sorting (cols 400–800, rows 200–600)
+pixel-sort photo.jpg --exclude 400,200,800,600
+
+# Sort ONLY within a region (isolate the effect to one area)
+pixel-sort photo.jpg --exclude 400,200,800,600 --invert-mask
 ```
 
 ## Web UI
