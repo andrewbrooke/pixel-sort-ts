@@ -40,6 +40,9 @@ export default function PixelSorter() {
   const [mimeType, setMimeType] = useState('image/png');
   const [isNarrow, setIsNarrow] = useState(false);
   const [privacyDismissed, setPrivacyDismissed] = useState(true);
+  const [maskMode, setMaskModeState] = useState<'rect' | 'lasso'>('rect');
+  const [lassoPoints, setLassoPoints] = useState<{ x: number; y: number }[]>([]);
+  const [lassoMask, setLassoMask] = useState<Uint8Array | null>(null);
   const source = useRef<SourceImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -106,7 +109,21 @@ export default function PixelSorter() {
 
   const toggleMask = (enabled: boolean) => {
     setMaskEnabled(enabled);
-    if (!enabled) setOpts(prev => ({ ...prev, exclude: null, excludeInvert: false }));
+    if (!enabled) {
+      setOpts(prev => ({ ...prev, exclude: null, excludeInvert: false }));
+      setLassoPoints([]);
+      setLassoMask(null);
+    }
+  };
+
+  const setMaskMode = (mode: 'rect' | 'lasso') => {
+    setMaskModeState(mode);
+    if (mode === 'lasso') {
+      setOpts(prev => ({ ...prev, exclude: null }));
+    } else {
+      setLassoPoints([]);
+      setLassoMask(null);
+    }
   };
 
   const run = useCallback(() => {
@@ -143,8 +160,19 @@ export default function PixelSorter() {
       workerRef.current = null;
     };
 
-    worker.postMessage({ buffer: data.buffer, width, height, opts }, [data.buffer]);
-  }, [opts, outputUrl, mimeType]);
+    const transferables: ArrayBuffer[] = [data.buffer];
+    let maskBuffer: ArrayBuffer | undefined;
+    if (lassoMask) {
+      const copy = new Uint8Array(lassoMask);
+      maskBuffer = copy.buffer;
+      transferables.push(maskBuffer);
+    }
+
+    worker.postMessage(
+      { buffer: data.buffer, width, height, opts, mask: maskBuffer },
+      transferables,
+    );
+  }, [opts, outputUrl, mimeType, lassoMask]);
 
   const download = useCallback(() => {
     if (!outputUrl) return;
@@ -323,6 +351,28 @@ export default function PixelSorter() {
               </span>
             </label>
             {maskEnabled && (
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {(['rect', 'lasso'] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setMaskMode(m)}
+                    style={{
+                      flex: 1,
+                      padding: '3px 0',
+                      fontSize: '11px',
+                      background: maskMode === m ? 'var(--accent)' : 'transparent',
+                      color: maskMode === m ? '#000' : 'var(--muted)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+            {maskEnabled && (
               <label
                 style={{
                   display: 'flex',
@@ -348,9 +398,14 @@ export default function PixelSorter() {
                 </span>
               </label>
             )}
-            {maskEnabled && opts.exclude && (
+            {maskEnabled && maskMode === 'rect' && opts.exclude && (
               <span style={{ color: 'var(--muted)', fontSize: '10px', fontFamily: 'monospace' }}>
                 {opts.exclude.x1},{opts.exclude.y1} → {opts.exclude.x2},{opts.exclude.y2}
+              </span>
+            )}
+            {maskEnabled && maskMode === 'lasso' && lassoPoints.length > 0 && (
+              <span style={{ color: 'var(--muted)', fontSize: '10px' }}>
+                {lassoPoints.length} points
               </span>
             )}
           </Field>
@@ -376,6 +431,9 @@ export default function PixelSorter() {
               onClick={() => {
                 setOpts(DEFAULTS);
                 setMaskEnabled(false);
+                setMaskModeState('rect');
+                setLassoPoints([]);
+                setLassoMask(null);
               }}
               style={{
                 padding: '8px',
@@ -407,7 +465,22 @@ export default function PixelSorter() {
 
         {/* Preview area */}
         <div
-          style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}
+          onDrop={handleDrop}
+          onDragOver={e => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            minWidth: 0,
+            outline: dragging ? '2px dashed var(--accent)' : '2px dashed transparent',
+            borderRadius: 'var(--radius)',
+            transition: 'outline-color 0.15s',
+          }}
         >
           {!inputUrl ? (
             <div
@@ -461,13 +534,19 @@ export default function PixelSorter() {
                 url={inputUrl}
                 onReplace={() => fileInputRef.current?.click()}
                 maskEnabled={maskEnabled}
+                maskMode={maskMode}
                 exclude={opts.exclude}
+                lassoPoints={lassoPoints}
                 imageSize={
                   source.current
                     ? { width: source.current.width, height: source.current.height }
                     : null
                 }
                 onExcludeChange={rect => setOpts(prev => ({ ...prev, exclude: rect }))}
+                onLassoComplete={(pts, mask) => {
+                  setLassoPoints(pts);
+                  setLassoMask(mask);
+                }}
               />
               <ImagePane label="sorted" url={outputUrl} />
               <input
@@ -564,6 +643,40 @@ function toDisplayRect(rect: Rect, containerEl: HTMLElement, imgEl: HTMLImageEle
   };
 }
 
+/**
+ * Sample average brightness of a small patch of image pixels around (x, y).
+ * Returns 'light' if the area is bright (use a dark overlay) or 'dark' (use a light overlay).
+ */
+function sampleBrightness(
+  imgEl: HTMLImageElement,
+  x: number,
+  y: number,
+  radius = 20,
+): 'light' | 'dark' {
+  try {
+    const canvas = document.createElement('canvas');
+    const size = radius * 2;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(imgEl, x - radius, y - radius, size, size, 0, 0, size, size);
+    const { data } = ctx.getImageData(0, 0, size, size);
+    let total = 0;
+    for (let i = 0; i < data.length; i += 4)
+      total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    return total / (data.length / 4) > 128 ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
+/** Overlay stroke/fill colors based on whether the underlying image area is light or dark. */
+function overlayColors(brightness: 'light' | 'dark') {
+  return brightness === 'light'
+    ? { stroke: 'rgba(0,0,0,0.85)', fill: 'rgba(0,0,0,0.15)' }
+    : { stroke: 'rgba(255,255,255,0.85)', fill: 'rgba(255,255,255,0.15)' };
+}
+
 function MaskOverlay({
   imgRef,
   exclude,
@@ -576,6 +689,7 @@ function MaskOverlay({
   const overlayRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [live, setLive] = useState<Rect | null>(null);
+  const [brightness, setBrightness] = useState<'light' | 'dark'>('dark');
 
   const getCoords = (e: React.MouseEvent) => {
     if (!overlayRef.current || !imgRef.current) return null;
@@ -586,6 +700,7 @@ function MaskOverlay({
     e.preventDefault();
     const coords = getCoords(e);
     if (!coords) return;
+    if (imgRef.current) setBrightness(sampleBrightness(imgRef.current, coords.x, coords.y));
     setDragStart(coords);
     setLive(null);
     onExcludeChange(null);
@@ -638,19 +753,179 @@ function MaskOverlay({
         userSelect: 'none',
       }}
     >
-      {displayRect && (
-        <div
+      {displayRect &&
+        (() => {
+          const { stroke, fill } = overlayColors(brightness);
+          return (
+            <div
+              style={{
+                position: 'absolute',
+                left: displayRect.left,
+                top: displayRect.top,
+                width: displayRect.width,
+                height: displayRect.height,
+                background: fill,
+                border: `2px solid ${stroke}`,
+                pointerEvents: 'none',
+              }}
+            />
+          );
+        })()}
+    </div>
+  );
+}
+
+// ─── Polygon rasterisation ────────────────────────────────────────────────────
+
+/** Scanline fill — returns a flat Uint8Array bitmask (1 = inside polygon). */
+function rasterisePolygon(
+  points: { x: number; y: number }[],
+  width: number,
+  height: number,
+): Uint8Array {
+  const mask = new Uint8Array(width * height);
+  if (points.length < 3) return mask;
+  const n = points.length;
+  const minY = Math.max(0, Math.floor(Math.min(...points.map(p => p.y))));
+  const maxY = Math.min(height - 1, Math.ceil(Math.max(...points.map(p => p.y))));
+
+  for (let y = minY; y <= maxY; y++) {
+    const xs: number[] = [];
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const pi = points[i],
+        pj = points[j];
+      if ((pi.y <= y && pj.y > y) || (pj.y <= y && pi.y > y)) {
+        xs.push(pi.x + ((y - pi.y) / (pj.y - pi.y)) * (pj.x - pi.x));
+      }
+    }
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      const x0 = Math.max(0, Math.round(xs[k]));
+      const x1 = Math.min(width - 1, Math.round(xs[k + 1]));
+      for (let x = x0; x <= x1; x++) mask[y * width + x] = 1;
+    }
+  }
+  return mask;
+}
+
+// ─── LassoOverlay ─────────────────────────────────────────────────────────────
+
+function LassoOverlay({
+  imgRef,
+  imageSize,
+  lassoPoints,
+  onLassoComplete,
+}: {
+  imgRef: React.RefObject<HTMLImageElement | null>;
+  imageSize: { width: number; height: number } | null;
+  lassoPoints: { x: number; y: number }[];
+  onLassoComplete: (points: { x: number; y: number }[], mask: Uint8Array) => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [livePoints, setLivePoints] = useState<{ x: number; y: number }[]>([]);
+  const [brightness, setBrightness] = useState<'light' | 'dark'>('dark');
+
+  // Refs so the global mouseup handler always sees current values without re-subscribing
+  const livePointsRef = useRef(livePoints);
+  livePointsRef.current = livePoints;
+  const imageSizeRef = useRef(imageSize);
+  imageSizeRef.current = imageSize;
+  const onLassoCompleteRef = useRef(onLassoComplete);
+  onLassoCompleteRef.current = onLassoComplete;
+
+  // Finish the lasso on mouseup anywhere on the page — handles the case where the
+  // user drags outside the overlay while holding the button down.
+  useEffect(() => {
+    const onGlobalMouseUp = () => {
+      const pts = livePointsRef.current;
+      const size = imageSizeRef.current;
+      if (pts.length < 3 || !size) {
+        setLivePoints([]);
+        return;
+      }
+      setLivePoints([]);
+      onLassoCompleteRef.current(pts, rasterisePolygon(pts, size.width, size.height));
+    };
+    window.addEventListener('mouseup', onGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', onGlobalMouseUp);
+  }, []); // no deps — refs keep it current without re-subscribing
+
+  const getCoords = (e: React.MouseEvent) => {
+    if (!overlayRef.current || !imgRef.current) return null;
+    return toImageCoords(e, overlayRef.current, imgRef.current);
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const coords = getCoords(e);
+    if (!coords) return;
+    if (imgRef.current) setBrightness(sampleBrightness(imgRef.current, coords.x, coords.y));
+    setLivePoints([coords]);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (livePoints.length === 0) return;
+    const coords = getCoords(e);
+    if (!coords) return;
+    setLivePoints(prev => {
+      const last = prev[prev.length - 1];
+      if (last && Math.abs(coords.x - last.x) < 3 && Math.abs(coords.y - last.y) < 3) return prev;
+      return [...prev, coords];
+    });
+  };
+
+  const toSvgPoints = (pts: { x: number; y: number }[]) => pts.map(p => `${p.x},${p.y}`).join(' ');
+
+  const drawing = livePoints.length > 0;
+  const activePts = drawing ? livePoints : lassoPoints;
+
+  // Use a viewBox matching the image's natural dimensions so SVG coordinates are
+  // already in image pixel space. preserveAspectRatio="xMidYMid meet" is the SVG
+  // equivalent of object-fit:contain — it scales and centers to match the image
+  // exactly, with no manual coordinate conversion needed.
+  const viewBox = imageSize ? `0 0 ${imageSize.width} ${imageSize.height}` : '0 0 1 1';
+
+  return (
+    <div
+      ref={overlayRef}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      style={{ position: 'absolute', inset: 0, cursor: 'crosshair', userSelect: 'none' }}
+    >
+      {activePts.length > 1 && (
+        <svg
+          viewBox={viewBox}
+          preserveAspectRatio="xMidYMid meet"
           style={{
             position: 'absolute',
-            left: displayRect.left,
-            top: displayRect.top,
-            width: displayRect.width,
-            height: displayRect.height,
-            background: 'rgba(200, 255, 0, 0.15)',
-            border: '1px solid rgba(200, 255, 0, 0.7)',
+            inset: 0,
+            width: '100%',
+            height: '100%',
             pointerEvents: 'none',
           }}
-        />
+        >
+          {(() => {
+            const { stroke, fill } = overlayColors(brightness);
+            return drawing ? (
+              <polyline
+                points={toSvgPoints(activePts)}
+                fill="none"
+                stroke={stroke}
+                strokeWidth="2.5"
+                strokeDasharray="6 3"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : (
+              <polygon
+                points={toSvgPoints(activePts)}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth="2.5"
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })()}
+        </svg>
       )}
     </div>
   );
@@ -663,17 +938,23 @@ function ImagePane({
   url,
   onReplace,
   maskEnabled = false,
+  maskMode = 'rect',
   exclude = null,
-  imageSize: _imageSize = null,
+  lassoPoints = [],
+  imageSize = null,
   onExcludeChange,
+  onLassoComplete,
 }: {
   label: string;
   url: string | null;
   onReplace?: () => void;
   maskEnabled?: boolean;
+  maskMode?: 'rect' | 'lasso';
   exclude?: Rect | null;
+  lassoPoints?: { x: number; y: number }[];
   imageSize?: { width: number; height: number } | null;
   onExcludeChange?: (rect: Rect | null) => void;
+  onLassoComplete?: (points: { x: number; y: number }[], mask: Uint8Array) => void;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -733,8 +1014,16 @@ function ImagePane({
                 display: 'block',
               }}
             />
-            {maskEnabled && onExcludeChange && (
+            {maskEnabled && maskMode === 'rect' && onExcludeChange && (
               <MaskOverlay imgRef={imgRef} exclude={exclude} onExcludeChange={onExcludeChange} />
+            )}
+            {maskEnabled && maskMode === 'lasso' && onLassoComplete && (
+              <LassoOverlay
+                imgRef={imgRef}
+                imageSize={imageSize}
+                lassoPoints={lassoPoints}
+                onLassoComplete={onLassoComplete}
+              />
             )}
           </>
         ) : (

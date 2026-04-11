@@ -319,3 +319,158 @@ describe('sort: sortColumns() — invert mask', () => {
     expect(r(buf, 4)).to.equal(255);
   });
 });
+
+// ─── pixel bitmask ────────────────────────────────────────────────────────────
+
+/** Build a flat Uint8Array bitmask from a 2D array of 0/1 rows (top to bottom). */
+function makeMask(rows: number[][]): Uint8Array {
+  const height = rows.length;
+  const width = rows[0].length;
+  const mask = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) mask[y * width + x] = rows[y][x];
+  return mask;
+}
+
+describe('sort: sortRows() — pixel bitmask', () => {
+  it('leaves masked pixels untouched, sorts unmasked pixels', () => {
+    // 1 row × 5 cols. Mask marks cols 1 and 3 (non-contiguous).
+    // Unmasked cols: 0, 2, 4 → [white, grey, black] → sorted: [black, grey, white]
+    // but they are sorted as separate runs around the masked pixels, so:
+    // segment [0,1): [white] → stays white (length 1)
+    // segment [2,3): [grey] → stays grey (length 1)
+    // segment [4,5): [black] → stays black (length 1)
+    // Each segment is length 1 so nothing moves — let's use a wider gap instead.
+    //
+    // 1 row × 6 cols. Mask covers cols 2–3. Segments: [0,2) and [4,6).
+    // [0,2): white, black → sorted: black, white
+    // [4,6): grey, red-ish → sorted by brightness ascending
+    const buf = makeBuffer(
+      [255, 255, 255, 255],
+      [0, 0, 0, 255], // cols 0-1 (unmasked)
+      [200, 200, 200, 255],
+      [200, 200, 200, 255], // cols 2-3 (masked)
+      [128, 128, 128, 255],
+      [64, 64, 64, 255], // cols 4-5 (unmasked)
+    );
+    const maskedBefore = [r(buf, 2), r(buf, 3)];
+    const mask = makeMask([[0, 0, 1, 1, 0, 0]]);
+
+    sortRows(buf, 6, 1, FULL, mask);
+
+    // Masked cols unchanged
+    expect(r(buf, 2)).to.equal(maskedBefore[0]);
+    expect(r(buf, 3)).to.equal(maskedBefore[1]);
+    // [0,2): black, white
+    expect(r(buf, 0)).to.equal(0);
+    expect(r(buf, 1)).to.equal(255);
+    // [4,6): darker first
+    expect(r(buf, 4)).to.equal(64);
+    expect(r(buf, 5)).to.equal(128);
+  });
+
+  it('skips rows where the mask is entirely zero in invert mode', () => {
+    // 2 rows × 2 cols. Mask only covers row 0.
+    // In invert mode, row 1 (all zeros in mask) should be untouched.
+    const buf = makeBuffer(
+      [255, 255, 255, 255],
+      [0, 0, 0, 255], // row 0 — masked, will sort inside
+      [255, 255, 255, 255],
+      [0, 0, 0, 255], // row 1 — unmasked, must not change
+    );
+    const beforeRow1 = Array.from(buf.slice(8, 16));
+    const mask = makeMask([
+      [1, 1],
+      [0, 0],
+    ]);
+
+    sortRows(buf, 2, 2, { ...FULL, excludeInvert: true }, mask);
+
+    // Row 0 sorted inside the mask: black, white
+    expect(r(buf, 0)).to.equal(0);
+    expect(r(buf, 1)).to.equal(255);
+    // Row 1 completely unchanged
+    expect(Array.from(buf.slice(8, 16))).to.deep.equal(beforeRow1);
+  });
+
+  it('sorts only inside masked runs when excludeInvert is true', () => {
+    // 1 row × 6 cols. Mask covers cols 1–4. Invert = sort only inside that run.
+    // Inside [1,5): [black, white, grey, red-ish] → sorted ascending
+    // Cols 0 and 5 must not move.
+    const buf = makeBuffer(
+      [42, 42, 42, 255], // col 0 — unmasked
+      [255, 255, 255, 255],
+      [0, 0, 0, 255], // cols 1-2 (masked)
+      [128, 128, 128, 255],
+      [64, 64, 64, 255], // cols 3-4 (masked)
+      [99, 99, 99, 255], // col 5 — unmasked
+    );
+    const mask = makeMask([[0, 1, 1, 1, 1, 0]]);
+
+    sortRows(buf, 6, 1, { ...FULL, excludeInvert: true }, mask);
+
+    // Unmasked cols unchanged
+    expect(r(buf, 0)).to.equal(42);
+    expect(r(buf, 5)).to.equal(99);
+    // Inside [1,5): sorted ascending by brightness: 0, 64, 128, 255
+    expect(r(buf, 1)).to.equal(0);
+    expect(r(buf, 2)).to.equal(64);
+    expect(r(buf, 3)).to.equal(128);
+    expect(r(buf, 4)).to.equal(255);
+  });
+});
+
+describe('sort: sortColumns() — pixel bitmask', () => {
+  it('leaves masked pixels untouched, sorts unmasked pixels per column', () => {
+    // 4 rows × 2 cols. Mask covers col 0 rows 1–2, col 1 is fully unmasked.
+    // Col 0: [white, MASKED, MASKED, black] → segments [0,1) and [3,4) — length 1 each, no change
+    // Col 1: [black, white, grey, darkgrey] → fully sorted ascending
+    const buf = makeBuffer(
+      [255, 255, 255, 255],
+      [0, 0, 0, 255], // row 0
+      [200, 200, 200, 255],
+      [255, 255, 255, 255], // row 1
+      [200, 200, 200, 255],
+      [128, 128, 128, 255], // row 2
+      [0, 0, 0, 255],
+      [64, 64, 64, 255], // row 3
+    );
+    const maskedBefore = [r(buf, 2), r(buf, 4)]; // col 0, rows 1 and 2
+    const mask = makeMask([
+      [0, 0],
+      [1, 0],
+      [1, 0],
+      [0, 0],
+    ]);
+
+    sortColumns(buf, 2, 4, { ...FULL, direction: 'vertical' }, mask);
+
+    // Masked pixels in col 0 unchanged
+    expect(r(buf, 2)).to.equal(maskedBefore[0]);
+    expect(r(buf, 4)).to.equal(maskedBefore[1]);
+    // Col 1 sorted ascending: 0, 64, 128, 255
+    expect(r(buf, 1)).to.equal(0);
+    expect(r(buf, 3)).to.equal(64);
+    expect(r(buf, 5)).to.equal(128);
+    expect(r(buf, 7)).to.equal(255);
+  });
+
+  it('sorts only inside masked runs per column when excludeInvert is true', () => {
+    // 4 rows × 1 col. Mask covers rows 1–2. Invert = sort only inside [1,3).
+    // Row 0 and row 3 must be unchanged.
+    const buf = makeBuffer(
+      [42, 42, 42, 255], // row 0 — unmasked
+      [255, 255, 255, 255], // row 1 — masked (white)
+      [0, 0, 0, 255], // row 2 — masked (black)
+      [99, 99, 99, 255], // row 3 — unmasked
+    );
+    const mask = makeMask([[0], [1], [1], [0]]);
+
+    sortColumns(buf, 1, 4, { ...FULL, direction: 'vertical', excludeInvert: true }, mask);
+
+    expect(r(buf, 0)).to.equal(42); // row 0 unchanged
+    expect(r(buf, 3)).to.equal(99); // row 3 unchanged
+    // Inside [1,3): sorted ascending: black, white
+    expect(r(buf, 1)).to.equal(0);
+    expect(r(buf, 2)).to.equal(255);
+  });
+});
