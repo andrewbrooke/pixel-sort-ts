@@ -91,21 +91,112 @@ function sortStripInverted(
   return result;
 }
 
-export function sortRows(data: Uint8Array, width: number, height: number, opts: SortOptions): void {
+/**
+ * Extract contiguous runs of masked pixels from a row in a flat bitmask.
+ * Each run is [start, end) — same convention as intervals.
+ */
+function getMaskedRunsFromRow(
+  mask: Uint8Array,
+  rowIndex: number,
+  width: number,
+): [number, number][] {
+  const runs: [number, number][] = [];
+  let start = -1;
+  for (let x = 0; x <= width; x++) {
+    const masked = x < width && mask[rowIndex * width + x] !== 0;
+    if (masked && start === -1) start = x;
+    else if (!masked && start !== -1) {
+      runs.push([start, x]);
+      start = -1;
+    }
+  }
+  return runs;
+}
+
+/**
+ * Extract contiguous runs of masked pixels from a column in a flat bitmask.
+ */
+function getMaskedRunsFromCol(
+  mask: Uint8Array,
+  colIndex: number,
+  width: number,
+  height: number,
+): [number, number][] {
+  const runs: [number, number][] = [];
+  let start = -1;
+  for (let y = 0; y <= height; y++) {
+    const masked = y < height && mask[y * width + colIndex] !== 0;
+    if (masked && start === -1) start = y;
+    else if (!masked && start !== -1) {
+      runs.push([start, y]);
+      start = -1;
+    }
+  }
+  return runs;
+}
+
+/**
+ * Sort a strip using a set of masked runs from a pixel bitmask.
+ * In normal mode: sorts the gaps between runs, leaves runs untouched.
+ * In excludeInvert mode: sorts only inside runs, leaves gaps untouched.
+ */
+function sortStripWithRuns(
+  pixels: Pixel[],
+  opts: SortOptions,
+  maskedRuns: [number, number][],
+): Pixel[] {
+  const result = [...pixels];
+  const len = pixels.length;
+
+  if (opts.excludeInvert) {
+    for (const [start, end] of maskedRuns) {
+      const seg = sortStrip(pixels.slice(start, end), opts);
+      for (let i = 0; i < seg.length; i++) result[start + i] = seg[i];
+    }
+  } else {
+    let cursor = 0;
+    for (const [start, end] of maskedRuns) {
+      if (cursor < start) {
+        const seg = sortStrip(pixels.slice(cursor, start), opts);
+        for (let i = 0; i < seg.length; i++) result[cursor + i] = seg[i];
+      }
+      cursor = end;
+    }
+    if (cursor < len) {
+      const seg = sortStrip(pixels.slice(cursor), opts);
+      for (let i = 0; i < seg.length; i++) result[cursor + i] = seg[i];
+    }
+  }
+
+  return result;
+}
+
+export function sortRows(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  opts: SortOptions,
+  pixelMask?: Uint8Array,
+): void {
   for (let y = 0; y < height; y++) {
     const pixels = readRow(data, y, width);
-    const maskRange = opts.exclude ? getMaskRange(opts.exclude, y, 'x') : null;
 
     let sorted: Pixel[];
-    if (maskRange) {
-      sorted = opts.excludeInvert
-        ? sortStripInverted(pixels, opts, maskRange)
-        : sortStripWithMask(pixels, opts, maskRange);
-    } else if (opts.excludeInvert) {
-      // Row is outside the mask y-range — skip entirely in invert mode
-      continue;
+    if (pixelMask) {
+      const runs = getMaskedRunsFromRow(pixelMask, y, width);
+      if (runs.length === 0 && opts.excludeInvert) continue;
+      sorted = sortStripWithRuns(pixels, opts, runs);
     } else {
-      sorted = sortStrip(pixels, opts);
+      const maskRange = opts.exclude ? getMaskRange(opts.exclude, y, 'x') : null;
+      if (maskRange) {
+        sorted = opts.excludeInvert
+          ? sortStripInverted(pixels, opts, maskRange)
+          : sortStripWithMask(pixels, opts, maskRange);
+      } else if (opts.excludeInvert) {
+        continue;
+      } else {
+        sorted = sortStrip(pixels, opts);
+      }
     }
 
     writeRow(data, y, width, sorted);
@@ -117,21 +208,27 @@ export function sortColumns(
   width: number,
   height: number,
   opts: SortOptions,
+  pixelMask?: Uint8Array,
 ): void {
   for (let x = 0; x < width; x++) {
     const pixels = readCol(data, x, width, height);
-    const maskRange = opts.exclude ? getMaskRange(opts.exclude, x, 'y') : null;
 
     let sorted: Pixel[];
-    if (maskRange) {
-      sorted = opts.excludeInvert
-        ? sortStripInverted(pixels, opts, maskRange)
-        : sortStripWithMask(pixels, opts, maskRange);
-    } else if (opts.excludeInvert) {
-      // Column is outside the mask x-range — skip entirely in invert mode
-      continue;
+    if (pixelMask) {
+      const runs = getMaskedRunsFromCol(pixelMask, x, width, height);
+      if (runs.length === 0 && opts.excludeInvert) continue;
+      sorted = sortStripWithRuns(pixels, opts, runs);
     } else {
-      sorted = sortStrip(pixels, opts);
+      const maskRange = opts.exclude ? getMaskRange(opts.exclude, x, 'y') : null;
+      if (maskRange) {
+        sorted = opts.excludeInvert
+          ? sortStripInverted(pixels, opts, maskRange)
+          : sortStripWithMask(pixels, opts, maskRange);
+      } else if (opts.excludeInvert) {
+        continue;
+      } else {
+        sorted = sortStrip(pixels, opts);
+      }
     }
 
     writeCol(data, x, width, sorted);
