@@ -43,9 +43,13 @@ export default function PixelSorter() {
   const [maskMode, setMaskModeState] = useState<'rect' | 'lasso'>('rect');
   const [lassoPoints, setLassoPoints] = useState<{ x: number; y: number }[]>([]);
   const [lassoMask, setLassoMask] = useState<Uint8Array | null>(null);
+  const [autoSort, setAutoSort] = useState(false);
+  const [sliderLo, setSliderLo] = useState(DEFAULTS.lo);
+  const [sliderHi, setSliderHi] = useState(DEFAULTS.hi);
   const source = useRef<SourceImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
+  const runRef = useRef<() => void>(() => {});
 
   useEffect(
     () => () => {
@@ -174,6 +178,13 @@ export default function PixelSorter() {
     );
   }, [opts, outputUrl, mimeType, lassoMask]);
 
+  runRef.current = run;
+
+  useEffect(() => {
+    if (!autoSort || !source.current || processing) return;
+    runRef.current();
+  }, [opts, autoSort]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const download = useCallback(() => {
     if (!outputUrl) return;
     const a = document.createElement('a');
@@ -183,6 +194,14 @@ export default function PixelSorter() {
     a.download = `${base}_sorted.${ext}`;
     a.click();
   }, [outputUrl, fileName, mimeType]);
+
+  const useOutputAsInput = useCallback(async () => {
+    if (!outputUrl) return;
+    const blob = await fetch(outputUrl).then(r => r.blob());
+    const base = fileName.replace(/\.[^.]+$/, '');
+    const ext = MIME_EXT[mimeType] ?? 'png';
+    loadFile(new File([blob], `${base}_sorted.${ext}`, { type: blob.type }));
+  }, [outputUrl, fileName, mimeType, loadFile]);
 
   return (
     <div
@@ -287,25 +306,27 @@ export default function PixelSorter() {
 
           {opts.mode === 'threshold' && (
             <>
-              <Field label={`lo  ${opts.lo.toFixed(2)}`} tooltip={TOOLTIPS.lo}>
+              <Field label={`lo  ${sliderLo.toFixed(2)}`} tooltip={TOOLTIPS.lo}>
                 <input
                   type="range"
                   min={0}
                   max={1}
                   step={0.01}
-                  value={opts.lo}
-                  onChange={e => set('lo', parseFloat(e.target.value))}
+                  value={sliderLo}
+                  onChange={e => setSliderLo(parseFloat(e.target.value))}
+                  onMouseUp={e => set('lo', parseFloat((e.target as HTMLInputElement).value))}
                   style={{ width: '100%' }}
                 />
               </Field>
-              <Field label={`hi  ${opts.hi.toFixed(2)}`} tooltip={TOOLTIPS.hi}>
+              <Field label={`hi  ${sliderHi.toFixed(2)}`} tooltip={TOOLTIPS.hi}>
                 <input
                   type="range"
                   min={0}
                   max={1}
                   step={0.01}
-                  value={opts.hi}
-                  onChange={e => set('hi', parseFloat(e.target.value))}
+                  value={sliderHi}
+                  onChange={e => setSliderHi(parseFloat(e.target.value))}
+                  onMouseUp={e => set('hi', parseFloat((e.target as HTMLInputElement).value))}
                   style={{ width: '100%' }}
                 />
               </Field>
@@ -411,6 +432,19 @@ export default function PixelSorter() {
           </Field>
 
           <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={autoSort}
+                onChange={e => setAutoSort(e.target.checked)}
+                style={{ accentColor: 'var(--accent)', width: '14px', height: '14px' }}
+              />
+              <span
+                style={{ color: autoSort ? 'var(--accent)' : 'var(--muted)', fontSize: '11px' }}
+              >
+                auto sort
+              </span>
+            </label>
             <button
               onClick={run}
               disabled={!inputUrl || processing}
@@ -430,6 +464,8 @@ export default function PixelSorter() {
             <button
               onClick={() => {
                 setOpts(DEFAULTS);
+                setSliderLo(DEFAULTS.lo);
+                setSliderHi(DEFAULTS.hi);
                 setMaskEnabled(false);
                 setMaskModeState('rect');
                 setLassoPoints([]);
@@ -447,18 +483,32 @@ export default function PixelSorter() {
             </button>
 
             {outputUrl && (
-              <button
-                onClick={download}
-                style={{
-                  padding: '8px',
-                  background: 'transparent',
-                  color: 'var(--accent)',
-                  border: '1px solid var(--accent)',
-                  borderRadius: 'var(--radius)',
-                }}
-              >
-                download
-              </button>
+              <>
+                <button
+                  onClick={download}
+                  style={{
+                    padding: '8px',
+                    background: 'transparent',
+                    color: 'var(--accent)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 'var(--radius)',
+                  }}
+                >
+                  download
+                </button>
+                <button
+                  onClick={useOutputAsInput}
+                  style={{
+                    padding: '8px',
+                    background: 'transparent',
+                    color: 'var(--muted)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                  }}
+                >
+                  use as input
+                </button>
+              </>
             )}
           </div>
         </aside>

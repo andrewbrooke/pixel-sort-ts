@@ -226,3 +226,95 @@ describe('PixelSorter — sort flow', () => {
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument();
   });
 });
+
+// ─── Use as input ─────────────────────────────────────────────────────────────
+
+describe('PixelSorter — use as input', () => {
+  it('"use as input" button is absent before first sort', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByText(/original/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /use as input/i })).not.toBeInTheDocument();
+  });
+
+  it('"use as input" button appears after sort completes', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /use as input/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('"use as input" clears the output pane', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /use as input/i })).toBeInTheDocument(),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /use as input/i }));
+    });
+    await waitFor(() => expect(screen.getByText(/run sort to see output/i)).toBeInTheDocument());
+  });
+});
+
+// ─── Auto sort ────────────────────────────────────────────────────────────────
+
+describe('PixelSorter — auto sort', () => {
+  it('auto sort checkbox is unchecked by default', () => {
+    render(<PixelSorter />);
+    const checkbox = screen.getByRole('checkbox', { name: /auto sort/i });
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('checking auto sort triggers a sort when an image is loaded', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await act(async () => {
+      await user.click(screen.getByRole('checkbox', { name: /auto sort/i }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('changing a setting triggers a sort when auto sort is enabled', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    // Enable auto sort
+    await user.click(screen.getByRole('checkbox', { name: /auto sort/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+
+    // Change a setting — should trigger another sort
+    await act(async () => {
+      await user.selectOptions(screen.getByDisplayValue('horizontal'), 'vertical');
+    });
+
+    // download button should still be present (sort completed again)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+});

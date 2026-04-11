@@ -75,6 +75,16 @@ vi.stubGlobal('localStorage', {
   },
 });
 
+// ─── fetch ───────────────────────────────────────────────────────────────────
+// useOutputAsInput calls fetch(blobUrl).then(r => r.blob()). Stub so it
+// resolves with a plain Blob instead of hitting the network/blob registry.
+vi.stubGlobal(
+  'fetch',
+  vi.fn().mockResolvedValue({
+    blob: () => Promise.resolve(new Blob(['img'], { type: 'image/png' })),
+  }),
+);
+
 // ─── Image ───────────────────────────────────────────────────────────────────
 // jsdom's Image doesn't fire onload automatically. Override so tests that call
 // loadFile can trigger the image load callback.
