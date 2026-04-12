@@ -1,4 +1,4 @@
-export type Direction = 'horizontal' | 'vertical' | 'both';
+export type Direction = 'horizontal' | 'vertical' | 'both' | 'radial' | 'spoke';
 
 export type SortKey = 'brightness' | 'hue' | 'saturation' | 'lightness' | 'red' | 'green' | 'blue';
 
@@ -30,4 +30,8 @@ export interface SortOptions {
   exclude: Rect | null;
   /** When true, sort ONLY inside the excluded rect instead of outside it. */
   excludeInvert: boolean;
+  /** Focal point X for radial/spoke directions, normalised 0–1. Defaults to 0.5 (centre). */
+  cx: number;
+  /** Focal point Y for radial/spoke directions, normalised 0–1. Defaults to 0.5 (centre). */
+  cy: number;
 }

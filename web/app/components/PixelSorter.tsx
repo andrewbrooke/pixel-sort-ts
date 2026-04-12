@@ -17,7 +17,7 @@ const MIME_EXT: Record<string, string> = {
 
 const TOOLTIPS: Record<string, string> = {
   direction:
-    'Axis to sort along. Horizontal sorts pixels within each row, vertical within each column, both does rows then columns.',
+    'Axis to sort along. Horizontal/vertical/both use straight rows or columns. Radial sorts along concentric rings; spoke sorts along lines radiating from a focal point.',
   key: 'Color property used to rank pixels within each interval before sorting.',
   mode: 'How sortable intervals are detected. full = entire row/column, threshold = brightness range, random = fixed-length segments.',
   lo: 'Lower brightness bound (0–1). Pixels below this value act as interval boundaries in threshold mode.',
@@ -180,10 +180,26 @@ export default function PixelSorter() {
 
   runRef.current = run;
 
+  // pendingSortRef is set when auto-sort wants to run but is blocked by an in-progress
+  // sort. The second effect below watches `processing` and runs the pending sort when
+  // the worker finishes.
+  const pendingSortRef = useRef(false);
+
   useEffect(() => {
-    if (!autoSort || !source.current || processing) return;
+    if (!autoSort || !source.current) return;
+    if (processing) {
+      pendingSortRef.current = true;
+      return;
+    }
+    pendingSortRef.current = false;
     runRef.current();
-  }, [opts, autoSort]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [opts, autoSort, lassoMask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (processing || !pendingSortRef.current || !autoSort || !source.current) return;
+    pendingSortRef.current = false;
+    runRef.current();
+  }, [processing, autoSort]);  
 
   const download = useCallback(() => {
     if (!outputUrl) return;
@@ -287,6 +303,41 @@ export default function PixelSorter() {
               ))}
             </select>
           </Field>
+
+          {(opts.direction === 'radial' || opts.direction === 'spoke') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span
+                style={{
+                  color: 'var(--muted)',
+                  fontSize: '11px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                focal point
+              </span>
+              <span style={{ color: 'var(--muted)', fontSize: '10px' }}>
+                click image to set · {(opts.cx * 100).toFixed(0)}%, {(opts.cy * 100).toFixed(0)}%
+              </span>
+              <button
+                onClick={() => {
+                  set('cx', 0.5);
+                  set('cy', 0.5);
+                }}
+                style={{
+                  padding: '3px 0',
+                  fontSize: '11px',
+                  background: 'transparent',
+                  color: 'var(--muted)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  cursor: 'pointer',
+                }}
+              >
+                reset to centre
+              </button>
+            </div>
+          )}
 
           <Field label="key" tooltip={TOOLTIPS.key}>
             <select value={opts.key} onChange={e => set('key', e.target.value as SortKey)}>
@@ -597,6 +648,12 @@ export default function PixelSorter() {
                   setLassoPoints(pts);
                   setLassoMask(mask);
                 }}
+                focalPoint={
+                  opts.direction === 'radial' || opts.direction === 'spoke'
+                    ? { x: opts.cx, y: opts.cy }
+                    : null
+                }
+                onFocalPointSet={(x, y) => setOpts(prev => ({ ...prev, cx: x, cy: y }))}
               />
               <ImagePane label="sorted" url={outputUrl} />
               <input
@@ -727,14 +784,18 @@ function overlayColors(brightness: 'light' | 'dark') {
     : { stroke: 'rgba(255,255,255,0.85)', fill: 'rgba(255,255,255,0.15)' };
 }
 
+const CLICK_THRESHOLD_PX = 5;
+
 function MaskOverlay({
   imgRef,
   exclude,
   onExcludeChange,
+  onFocalPointSet,
 }: {
   imgRef: React.RefObject<HTMLImageElement | null>;
   exclude: Rect | null;
   onExcludeChange: (rect: Rect | null) => void;
+  onFocalPointSet?: (x: number, y: number) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -753,7 +814,9 @@ function MaskOverlay({
     if (imgRef.current) setBrightness(sampleBrightness(imgRef.current, coords.x, coords.y));
     setDragStart(coords);
     setLive(null);
-    onExcludeChange(null);
+    // Do NOT call onExcludeChange(null) here — that would change opts mid-drag and
+    // trigger a spurious auto-sort. The live preview is driven by the `live` state,
+    // so opts.exclude only needs to change on mouseup when the drag is complete.
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
@@ -774,6 +837,16 @@ function MaskOverlay({
     setDragStart(null);
     setLive(null);
     if (!coords) return;
+    // Treat as a click (no meaningful drag) — set focal point if available
+    if (
+      onFocalPointSet &&
+      Math.abs(coords.x - dragStart.x) < CLICK_THRESHOLD_PX &&
+      Math.abs(coords.y - dragStart.y) < CLICK_THRESHOLD_PX
+    ) {
+      const img = imgRef.current;
+      if (img) onFocalPointSet(coords.x / img.naturalWidth, coords.y / img.naturalHeight);
+      return;
+    }
     const rect: Rect = {
       x1: Math.min(dragStart.x, coords.x),
       y1: Math.min(dragStart.y, coords.y),
@@ -865,40 +938,45 @@ function LassoOverlay({
   imageSize,
   lassoPoints,
   onLassoComplete,
+  onFocalPointSet,
 }: {
   imgRef: React.RefObject<HTMLImageElement | null>;
   imageSize: { width: number; height: number } | null;
   lassoPoints: { x: number; y: number }[];
   onLassoComplete: (points: { x: number; y: number }[], mask: Uint8Array) => void;
+  onFocalPointSet?: (x: number, y: number) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [livePoints, setLivePoints] = useState<{ x: number; y: number }[]>([]);
   const [brightness, setBrightness] = useState<'light' | 'dark'>('dark');
 
-  // Refs so the global mouseup handler always sees current values without re-subscribing
   const livePointsRef = useRef(livePoints);
   livePointsRef.current = livePoints;
   const imageSizeRef = useRef(imageSize);
   imageSizeRef.current = imageSize;
   const onLassoCompleteRef = useRef(onLassoComplete);
   onLassoCompleteRef.current = onLassoComplete;
+  const onFocalPointSetRef = useRef(onFocalPointSet);
+  onFocalPointSetRef.current = onFocalPointSet;
 
-  // Finish the lasso on mouseup anywhere on the page — handles the case where the
-  // user drags outside the overlay while holding the button down.
   useEffect(() => {
     const onGlobalMouseUp = () => {
       const pts = livePointsRef.current;
       const size = imageSizeRef.current;
-      if (pts.length < 3 || !size) {
+      // Click (no meaningful drag) — set focal point if handler is available
+      if (pts.length < 3) {
+        if (pts.length === 1 && onFocalPointSetRef.current && size) {
+          onFocalPointSetRef.current(pts[0].x / size.width, pts[0].y / size.height);
+        }
         setLivePoints([]);
         return;
       }
       setLivePoints([]);
-      onLassoCompleteRef.current(pts, rasterisePolygon(pts, size.width, size.height));
+      onLassoCompleteRef.current(pts, rasterisePolygon(pts, size!.width, size!.height));
     };
     window.addEventListener('mouseup', onGlobalMouseUp);
     return () => window.removeEventListener('mouseup', onGlobalMouseUp);
-  }, []); // no deps — refs keep it current without re-subscribing
+  }, []);
 
   const getCoords = (e: React.MouseEvent) => {
     if (!overlayRef.current || !imgRef.current) return null;
@@ -992,8 +1070,10 @@ function ImagePane({
   exclude = null,
   lassoPoints = [],
   imageSize = null,
+  focalPoint = null,
   onExcludeChange,
   onLassoComplete,
+  onFocalPointSet,
 }: {
   label: string;
   url: string | null;
@@ -1003,8 +1083,10 @@ function ImagePane({
   exclude?: Rect | null;
   lassoPoints?: { x: number; y: number }[];
   imageSize?: { width: number; height: number } | null;
+  focalPoint?: { x: number; y: number } | null;
   onExcludeChange?: (rect: Rect | null) => void;
   onLassoComplete?: (points: { x: number; y: number }[], mask: Uint8Array) => void;
+  onFocalPointSet?: (x: number, y: number) => void;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -1065,7 +1147,12 @@ function ImagePane({
               }}
             />
             {maskEnabled && maskMode === 'rect' && onExcludeChange && (
-              <MaskOverlay imgRef={imgRef} exclude={exclude} onExcludeChange={onExcludeChange} />
+              <MaskOverlay
+                imgRef={imgRef}
+                exclude={exclude}
+                onExcludeChange={onExcludeChange}
+                onFocalPointSet={onFocalPointSet}
+              />
             )}
             {maskEnabled && maskMode === 'lasso' && onLassoComplete && (
               <LassoOverlay
@@ -1073,6 +1160,14 @@ function ImagePane({
                 imageSize={imageSize}
                 lassoPoints={lassoPoints}
                 onLassoComplete={onLassoComplete}
+                onFocalPointSet={onFocalPointSet}
+              />
+            )}
+            {focalPoint && imageSize && (
+              <FocalPointOverlay
+                imageSize={imageSize}
+                focalPoint={focalPoint}
+                onFocalPointSet={maskEnabled ? undefined : onFocalPointSet}
               />
             )}
           </>
@@ -1081,6 +1176,106 @@ function ImagePane({
         )}
       </div>
     </div>
+  );
+}
+
+// ─── FocalPointOverlay ────────────────────────────────────────────────────────
+
+function FocalPointOverlay({
+  imageSize,
+  focalPoint,
+  onFocalPointSet,
+}: {
+  imageSize: { width: number; height: number };
+  focalPoint: { x: number; y: number };
+  onFocalPointSet?: (x: number, y: number) => void;
+}) {
+  const { width, height } = imageSize;
+  const px = focalPoint.x * width;
+  const py = focalPoint.y * height;
+  const r = Math.max(8, Math.min(width, height) * 0.015);
+
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!onFocalPointSet) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    // xMidYMid meet: uniform scale so the whole viewBox fits, centred
+    const scale = Math.min(rect.width / width, rect.height / height);
+    const offsetX = (rect.width - width * scale) / 2;
+    const offsetY = (rect.height - height * scale) / 2;
+    const nx = Math.max(0, Math.min(1, (e.clientX - rect.left - offsetX) / (width * scale)));
+    const ny = Math.max(0, Math.min(1, (e.clientY - rect.top - offsetY) / (height * scale)));
+    onFocalPointSet(nx, ny);
+  };
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
+      onClick={handleClick}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        cursor: onFocalPointSet ? 'crosshair' : 'default',
+        pointerEvents: onFocalPointSet ? 'all' : 'none',
+      }}
+    >
+      {/* Outer ring */}
+      <circle
+        cx={px}
+        cy={py}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle
+        cx={px}
+        cy={py}
+        r={r}
+        fill="none"
+        stroke="rgba(0,0,0,0.5)"
+        strokeWidth={4}
+        vectorEffect="non-scaling-stroke"
+      />
+      {/* Crosshair lines */}
+      {[
+        [px - r * 1.8, py, px - r * 0.4, py],
+        [px + r * 0.4, py, px + r * 1.8, py],
+        [px, py - r * 1.8, px, py - r * 0.4],
+        [px, py + r * 0.4, px, py + r * 1.8],
+      ].map(([x1, y1, x2, y2], i) => (
+        <line
+          key={i}
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke="rgba(0,0,0,0.5)"
+          strokeWidth={4}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {[
+        [px - r * 1.8, py, px - r * 0.4, py],
+        [px + r * 0.4, py, px + r * 1.8, py],
+        [px, py - r * 1.8, px, py - r * 0.4],
+        [px, py + r * 0.4, px, py + r * 1.8],
+      ].map(([x1, y1, x2, y2], i) => (
+        <line
+          key={`w${i}`}
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke="rgba(255,255,255,0.9)"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </svg>
   );
 }
 

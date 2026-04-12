@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { sortRows, sortColumns } from '../src/sort';
+import { sortRows, sortColumns, sortPolar } from '../src/sort';
 import type { SortOptions } from '../src/types';
 
 /** Build a flat RGBA Uint8Array from [r,g,b,a] tuples */
@@ -29,6 +29,8 @@ const FULL: SortOptions = {
   maxLen: 100,
   exclude: null,
   excludeInvert: false,
+  cx: 0.5,
+  cy: 0.5,
 };
 
 // ─── sortRows ────────────────────────────────────────────────────────────────
@@ -472,5 +474,153 @@ describe('sort: sortColumns() — pixel bitmask', () => {
     // Inside [1,3): sorted ascending: black, white
     expect(r(buf, 1)).to.equal(0);
     expect(r(buf, 2)).to.equal(255);
+  });
+});
+
+// ─── sortPolar ───────────────────────────────────────────────────────────────
+
+describe('sort: sortPolar() — radial', () => {
+  it('modifies pixel data (sanity: output differs from input)', () => {
+    // 5×5 image with randomised brightness values — full mode, centre focal point.
+    const vals: [number, number, number, number][] = [];
+    const seed = [
+      200, 50, 180, 30, 120, 90, 255, 10, 140, 70, 160, 220, 80, 110, 40, 190, 60, 130, 240, 20,
+      100, 170, 230, 15, 145,
+    ];
+    for (const v of seed) vals.push([v, v, v, 255]);
+    const buf = makeBuffer(...vals);
+    const before = Array.from(buf);
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'radial', cx: 0.5, cy: 0.5 });
+    expect(Array.from(buf)).to.not.deep.equal(before);
+  });
+
+  it('preserves the total number of pixels (no data loss)', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 25; i++) vals.push([i * 10, i * 10, i * 10, 255]);
+    const buf = makeBuffer(...vals);
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'radial', cx: 0.5, cy: 0.5 });
+    // Every alpha channel should still be 255
+    for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
+    // Buffer length unchanged
+    expect(buf.length).to.equal(25 * 4);
+  });
+
+  it('is a no-op for a 1×1 image', () => {
+    const buf = makeBuffer([123, 45, 67, 255]);
+    sortPolar(buf, 1, 1, { ...FULL, direction: 'radial', cx: 0.5, cy: 0.5 });
+    expect(buf[0]).to.equal(123);
+    expect(buf[1]).to.equal(45);
+  });
+
+  it('off-centre focal point still covers all pixels', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 16; i++) vals.push([i * 16, i * 16, i * 16, 255]);
+    const buf = makeBuffer(...vals);
+    // focal point at top-left corner — all pixels are on rings radiating outward
+    sortPolar(buf, 4, 4, { ...FULL, direction: 'radial', cx: 0, cy: 0 });
+    for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
+  });
+});
+
+describe('sort: sortPolar() — spoke', () => {
+  it('modifies pixel data (sanity: output differs from input)', () => {
+    const vals: [number, number, number, number][] = [];
+    const seed = [
+      200, 50, 180, 30, 120, 90, 255, 10, 140, 70, 160, 220, 80, 110, 40, 190, 60, 130, 240, 20,
+      100, 170, 230, 15, 145,
+    ];
+    for (const v of seed) vals.push([v, v, v, 255]);
+    const buf = makeBuffer(...vals);
+    const before = Array.from(buf);
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'spoke', cx: 0.5, cy: 0.5 });
+    expect(Array.from(buf)).to.not.deep.equal(before);
+  });
+
+  it('preserves the total number of pixels (no data loss)', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 25; i++) vals.push([i * 10, i * 10, i * 10, 255]);
+    const buf = makeBuffer(...vals);
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'spoke', cx: 0.5, cy: 0.5 });
+    for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
+    expect(buf.length).to.equal(25 * 4);
+  });
+});
+
+// ─── sortPolar — seam offset (findSeamOffset coverage) ───────────────────────
+
+describe('sort: sortPolar() — threshold seam offset', () => {
+  it('finds a natural boundary pixel to use as seam start in threshold mode', () => {
+    // 1-row × 5-col image used as a single ring. Values: bright, dark, bright, bright, bright.
+    // lo=0.4, hi=0.9 → pixel 1 (value 10) is below lo — a natural boundary.
+    // After sorting the sortable pixels [200,180,160,140] should be ordered and
+    // the boundary pixel (10) stays put. Critically: no wrap-around artifact.
+    const buf = makeBuffer(
+      [200, 200, 200, 255],
+      [10, 10, 10, 255], // boundary (below lo)
+      [180, 180, 180, 255],
+      [160, 160, 160, 255],
+      [140, 140, 140, 255],
+    );
+    sortPolar(buf, 5, 1, {
+      ...FULL,
+      direction: 'radial',
+      mode: 'threshold',
+      lo: 0.4,
+      hi: 0.9,
+      cx: 0.5,
+      cy: 0.5,
+    });
+    // All alphas intact
+    for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
+    // Buffer length unchanged
+    expect(buf.length).to.equal(5 * 4);
+  });
+});
+
+// ─── sortPolar — pixel bitmask (isMasked branch coverage) ────────────────────
+
+describe('sort: sortPolar() — pixel bitmask', () => {
+  it('leaves masked pixels untouched in radial mode', () => {
+    // 3×3 image, focal point top-left (0,0). All pixels at varying radii.
+    // Mask covers pixel at (2,0) — it should not move.
+    const vals: [number, number, number, number][] = [
+      [255, 255, 255, 255],
+      [128, 128, 128, 255],
+      [10, 10, 10, 255],
+      [200, 200, 200, 255],
+      [50, 50, 50, 255],
+      [180, 180, 180, 255],
+      [90, 90, 90, 255],
+      [220, 220, 220, 255],
+      [60, 60, 60, 255],
+    ];
+    const buf = makeBuffer(...vals);
+    const mask = new Uint8Array(9);
+    mask[2] = 1; // mask pixel at (2,0)
+    const maskedValBefore = buf[2 * 4]; // red channel of pixel (2,0)
+
+    sortPolar(buf, 3, 3, { ...FULL, direction: 'radial', cx: 0, cy: 0 }, mask);
+
+    expect(buf[2 * 4]).to.equal(maskedValBefore);
+    for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
+  });
+
+  it('skips rings with no masked pixels when excludeInvert is true', () => {
+    // 1×3 image. No pixels masked (mask all zeros). excludeInvert=true means sort
+    // ONLY inside the mask — but there is no mask region, so nothing should change.
+    // This exercises the `maskedRuns.length === 0 && excludeInvert` early-return.
+    const buf = makeBuffer([255, 255, 255, 255], [0, 0, 0, 255], [128, 128, 128, 255]);
+    const before = Array.from(buf);
+    const mask = new Uint8Array([0, 0, 0]); // no pixels masked
+
+    sortPolar(
+      buf,
+      3,
+      1,
+      { ...FULL, direction: 'radial', cx: 0.5, cy: 0.5, excludeInvert: true },
+      mask,
+    );
+
+    expect(Array.from(buf)).to.deep.equal(before);
   });
 });

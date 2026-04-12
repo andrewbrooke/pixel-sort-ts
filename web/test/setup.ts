@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Tell React that this environment supports act(). Must be done via vi.stubGlobal
+// so Vitest's module isolation picks it up before any React code runs.
+vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+
 // ─── Worker ───────────────────────────────────────────────────────────────────
 // PixelSorter creates a Web Worker for sort processing. We replace it with a
 // no-op that immediately fires onmessage with an empty ArrayBuffer so tests
@@ -10,9 +14,12 @@ class MockWorker {
   onerror: (() => void) | null = null;
 
   postMessage(data: { buffer: ArrayBuffer; width: number; height: number }) {
-    // Return a zeroed buffer the same size as the input so canvas.putImageData works
+    // Fire synchronously so the entire onmessage → setOutputUrl → setProcessing(false)
+    // chain completes within the same act() flush that called run(). A setTimeout
+    // (macro-task) would fire after act() has already finished, causing React to warn
+    // about state updates outside act() in auto-sort tests.
     const out = new ArrayBuffer(data.width * data.height * 4);
-    setTimeout(() => this.onmessage?.({ data: out } as MessageEvent), 0);
+    this.onmessage?.({ data: out } as MessageEvent);
   }
 
   terminate() {}

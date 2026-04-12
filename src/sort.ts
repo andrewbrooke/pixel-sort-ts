@@ -235,6 +235,191 @@ export function sortColumns(
   }
 }
 
+/**
+ * Polar sort: sorts pixels along concentric rings (radial) or outward spokes (spoke).
+ *
+ * Every pixel is assigned to exactly one ring/spoke by integer distance or discretised
+ * angle from the focal point. The strip for each ring/spoke is then sorted with the
+ * same interval logic used by sortRows/sortColumns.
+ */
+export function sortPolar(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  opts: SortOptions,
+  pixelMask?: Uint8Array,
+): void {
+  const cx = (opts.cx ?? 0.5) * width;
+  const cy = (opts.cy ?? 0.5) * height;
+
+  /** Returns true if this flat pixel index is inside the exclusion mask. */
+  function isMasked(pixIdx: number): boolean {
+    if (pixelMask) return pixelMask[pixIdx] !== 0;
+    if (opts.exclude) {
+      const x = pixIdx % width;
+      const y = Math.floor(pixIdx / width);
+      const { x1, y1, x2, y2 } = opts.exclude;
+      return x >= x1 && x <= x2 && y >= y1 && y <= y2;
+    }
+    return false;
+  }
+
+  const hasMask = !!(pixelMask || opts.exclude);
+
+  if (opts.direction === 'radial') {
+    const rings = new Map<number, number[]>();
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const r = Math.round(Math.sqrt((x - cx) ** 2 + (y - cy) ** 2));
+        let ring = rings.get(r);
+        if (!ring) {
+          ring = [];
+          rings.set(r, ring);
+        }
+        ring.push(y * width + x);
+      }
+    }
+
+    for (const pixIndices of rings.values()) {
+      pixIndices.sort((a, b) => {
+        const ax = (a % width) - cx,
+          ay = Math.floor(a / width) - cy;
+        const bx = (b % width) - cx,
+          by = Math.floor(b / width) - cy;
+        return Math.atan2(ay, ax) - Math.atan2(by, bx);
+      });
+      sortAndWriteStrip(data, pixIndices, opts, hasMask ? isMasked : undefined);
+    }
+  } else {
+    const maxR = Math.ceil(
+      Math.sqrt(Math.max(cx, width - cx) ** 2 + Math.max(cy, height - cy) ** 2),
+    );
+    const numSpokes = Math.max(8, Math.ceil(2 * Math.PI * maxR));
+
+    const spokes = new Map<number, number[]>();
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const theta = Math.atan2(y - cy, x - cx);
+        const spokeIdx =
+          ((Math.round(((theta + Math.PI) / (2 * Math.PI)) * numSpokes) % numSpokes) + numSpokes) %
+          numSpokes;
+        let spoke = spokes.get(spokeIdx);
+        if (!spoke) {
+          spoke = [];
+          spokes.set(spokeIdx, spoke);
+        }
+        spoke.push(y * width + x);
+      }
+    }
+
+    for (const pixIndices of spokes.values()) {
+      pixIndices.sort((a, b) => {
+        const ax = (a % width) - cx,
+          ay = Math.floor(a / width) - cy;
+        const bx = (b % width) - cx,
+          by = Math.floor(b / width) - cy;
+        return ax * ax + ay * ay - (bx * bx + by * by);
+      });
+      sortAndWriteStrip(data, pixIndices, opts, hasMask ? isMasked : undefined);
+    }
+  }
+}
+
+/**
+ * Read pixels at the given flat indices, apply mask-aware sorting, write back.
+ *
+ * The strip is first rotated so the wrap-around seam falls at a natural interval
+ * boundary, eliminating the visible line artifact that occurs when a sorted interval
+ * crosses the arbitrary start/end of a circular polar strip.
+ */
+function sortAndWriteStrip(
+  data: Uint8Array,
+  pixIndices: number[],
+  opts: SortOptions,
+  isMasked?: (pixIdx: number) => boolean,
+): void {
+  const n = pixIndices.length;
+  if (n === 0) return;
+
+  // Rotate so the seam between index 0 and index n-1 falls at a natural boundary.
+  const offset = findSeamOffset(data, pixIndices, opts);
+  const ordered =
+    offset === 0 ? pixIndices : [...pixIndices.slice(offset), ...pixIndices.slice(0, offset)];
+
+  const pixels: Pixel[] = ordered.map(idx => {
+    const i = idx * 4;
+    return { r: data[i], g: data[i + 1], b: data[i + 2], a: data[i + 3] };
+  });
+
+  let sorted: Pixel[];
+
+  if (isMasked) {
+    const maskedRuns: [number, number][] = [];
+    let runStart = -1;
+    for (let i = 0; i <= n; i++) {
+      const masked = i < n && isMasked(ordered[i]);
+      if (masked && runStart === -1) runStart = i;
+      else if (!masked && runStart !== -1) {
+        maskedRuns.push([runStart, i]);
+        runStart = -1;
+      }
+    }
+    if (maskedRuns.length === 0 && opts.excludeInvert) return;
+    sorted = sortStripWithRuns(pixels, opts, maskedRuns);
+  } else {
+    sorted = sortStrip(pixels, opts);
+  }
+
+  for (let i = 0; i < n; i++) {
+    const idx = ordered[i] * 4;
+    const p = sorted[i];
+    data[idx] = p.r;
+    data[idx + 1] = p.g;
+    data[idx + 2] = p.b;
+    data[idx + 3] = p.a;
+  }
+}
+
+/**
+ * Find the best rotation offset for a circular polar strip so the seam between
+ * the last and first element falls at a natural interval boundary.
+ *
+ * Threshold mode: use the first pixel whose brightness is outside [lo, hi] — it
+ * would be a boundary anyway, so the wrapped interval becomes a clean linear one.
+ *
+ * Full / random mode (or threshold with no boundary pixels): find the adjacent pair
+ * with the largest brightness step and place the seam there, coinciding with an
+ * existing edge in the image rather than cutting across a uniform region.
+ */
+function findSeamOffset(data: Uint8Array, pixIndices: number[], opts: SortOptions): number {
+  const n = pixIndices.length;
+  if (n <= 1) return 0;
+
+  if (opts.mode === 'threshold') {
+    for (let i = 0; i < n; i++) {
+      const base = pixIndices[i] * 4;
+      const bri = (0.299 * data[base] + 0.587 * data[base + 1] + 0.114 * data[base + 2]) / 255;
+      if (bri < opts.lo || bri > opts.hi) return i;
+    }
+  }
+
+  // Fallback: seam at the largest brightness discontinuity.
+  let maxStep = -1;
+  let seamIdx = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pixIndices[i] * 4;
+    const b = pixIndices[(i + 1) % n] * 4;
+    const bA = (0.299 * data[a] + 0.587 * data[a + 1] + 0.114 * data[a + 2]) / 255;
+    const bB = (0.299 * data[b] + 0.587 * data[b + 1] + 0.114 * data[b + 2]) / 255;
+    const step = Math.abs(bA - bB);
+    if (step > maxStep) {
+      maxStep = step;
+      seamIdx = (i + 1) % n;
+    }
+  }
+  return seamIdx;
+}
+
 // ─── Buffer helpers (kept local to avoid circular deps) ──────────────────────
 
 function readRow(data: Uint8Array, y: number, width: number): Pixel[] {

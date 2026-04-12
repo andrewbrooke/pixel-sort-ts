@@ -152,6 +152,60 @@ describe('PixelSorter — controls', () => {
   });
 });
 
+// ─── Radial / spoke ───────────────────────────────────────────────────────────
+
+describe('PixelSorter — radial/spoke controls', () => {
+  it('focal point section is absent for default direction', () => {
+    render(<PixelSorter />);
+    expect(screen.queryByText(/focal point/i)).not.toBeInTheDocument();
+  });
+
+  it('focal point section appears when direction is radial', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('horizontal'), 'radial');
+    expect(screen.getByText(/focal point/i)).toBeInTheDocument();
+  });
+
+  it('focal point section appears when direction is spoke', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('horizontal'), 'spoke');
+    expect(screen.getByText(/focal point/i)).toBeInTheDocument();
+  });
+
+  it('reset to centre button is present when direction is radial', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('horizontal'), 'radial');
+    expect(screen.getByRole('button', { name: /reset to centre/i })).toBeInTheDocument();
+  });
+
+  it('focal point section disappears when switching back to horizontal', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('horizontal'), 'radial');
+    expect(screen.getByText(/focal point/i)).toBeInTheDocument();
+    await user.selectOptions(screen.getByDisplayValue('radial'), 'horizontal');
+    expect(screen.queryByText(/focal point/i)).not.toBeInTheDocument();
+  });
+
+  it('sort completes when direction is radial', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByDisplayValue('horizontal'), 'radial');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+});
+
 // ─── Mask UI ──────────────────────────────────────────────────────────────────
 
 describe('PixelSorter — mask controls', () => {
@@ -312,7 +366,54 @@ describe('PixelSorter — auto sort', () => {
       await user.selectOptions(screen.getByDisplayValue('horizontal'), 'vertical');
     });
 
-    // download button should still be present (sort completed again)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('sorts after a pending sort is unblocked when processing finishes', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    // Enable auto sort — first sort starts
+    await user.click(screen.getByRole('checkbox', { name: /auto sort/i }));
+
+    // Immediately change direction while the first sort may still be in flight
+    await act(async () => {
+      await user.selectOptions(screen.getByDisplayValue('horizontal'), 'vertical');
+    });
+
+    // Both the in-flight sort and the pending sort should eventually resolve
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('switching to radial direction and changing key both trigger auto sort', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await user.click(screen.getByRole('checkbox', { name: /auto sort/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      await user.selectOptions(screen.getByDisplayValue('horizontal'), 'radial');
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      await user.selectOptions(screen.getByDisplayValue('brightness'), 'hue');
+    });
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
     );
