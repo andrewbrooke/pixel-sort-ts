@@ -1,4 +1,4 @@
-import { sortRows, sortColumns } from '@core/sort';
+import { sortRows, sortColumns, sortPolar } from '@core/sort';
 import type { SortOptions } from '@core/types';
 
 export interface SortWorkerInput {
@@ -20,6 +20,9 @@ addEventListener('message', ({ data }: MessageEvent<SortWorkerInput>) => {
   }
   if (opts.direction === 'vertical' || opts.direction === 'both') {
     sortColumns(pixels, width, height, opts, pixelMask);
+  }
+  if (opts.direction === 'radial' || opts.direction === 'spoke') {
+    sortPolar(pixels, width, height, opts, pixelMask);
   }
 
   // Transfer the buffer back to the main thread (zero-copy)

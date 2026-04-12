@@ -3,12 +3,18 @@
 import { program } from 'commander';
 import path from 'path';
 import { readImage, writeImage } from './image';
-import { sortRows, sortColumns } from './sort';
+import { sortRows, sortColumns, sortPolar } from './sort';
 import { Direction, SortKey, IntervalMode, SortOptions } from './types';
 import type { Rect } from './types';
 import { DIRECTIONS, SORT_KEYS, INTERVAL_MODES, DEFAULTS } from './constants';
 
-const DIR_ABBREV: Record<Direction, string> = { horizontal: 'h', vertical: 'v', both: 'b' };
+const DIR_ABBREV: Record<Direction, string> = {
+  horizontal: 'h',
+  vertical: 'v',
+  both: 'b',
+  radial: 'rad',
+  spoke: 'spk',
+};
 const KEY_ABBREV: Record<SortKey, string> = {
   brightness: 'bri',
   hue: 'hue',
@@ -73,6 +79,8 @@ program
   )
   .option('--exclude <x1,y1,x2,y2>', 'Exclude a rectangle from sorting (pixel coordinates)')
   .option('--invert-mask', 'Sort ONLY inside the --exclude rectangle instead of outside it')
+  .option('--cx <n>', 'Focal point X for radial/spoke (0–1, default 0.5)', parseFloat, DEFAULTS.cx)
+  .option('--cy <n>', 'Focal point Y for radial/spoke (0–1, default 0.5)', parseFloat, DEFAULTS.cy)
   .action(async (input: string, opts) => {
     if (!DIRECTIONS.includes(opts.direction)) {
       console.error(`Invalid direction. Choose: ${DIRECTIONS.join(', ')}`);
@@ -97,6 +105,8 @@ program
       maxLen: opts.maxLen,
       exclude: opts.exclude ? parseExclude(opts.exclude as string) : null,
       excludeInvert: !!opts.invertMask,
+      cx: opts.cx,
+      cy: opts.cy,
     };
 
     const output = opts.output ?? defaultOutputPath(input, sortOpts);
@@ -127,6 +137,11 @@ program
     if (opts.direction === 'vertical' || opts.direction === 'both') {
       process.stdout.write('Sorting columns... ');
       sortColumns(data, width, height, sortOpts);
+      console.log('done');
+    }
+    if (opts.direction === 'radial' || opts.direction === 'spoke') {
+      process.stdout.write(`Sorting ${opts.direction}... `);
+      sortPolar(data, width, height, sortOpts);
       console.log('done');
     }
 
