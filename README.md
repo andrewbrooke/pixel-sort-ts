@@ -114,6 +114,8 @@ npm run lint          # ESLint
 npm run lint:fix      # ESLint with auto-fix
 npm run format        # Prettier
 npm run format:check  # Prettier check (CI)
+npm run test          # Vitest
+npm run test:watch    # Vitest watch mode
 ```
 
 ## CLI Development
