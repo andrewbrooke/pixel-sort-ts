@@ -31,6 +31,7 @@ const FULL: SortOptions = {
   excludeInvert: false,
   cx: 0.5,
   cy: 0.5,
+  channel: 'all',
 };
 
 // ─── sortRows ────────────────────────────────────────────────────────────────
@@ -477,6 +478,117 @@ describe('sort: sortColumns() — pixel bitmask', () => {
   });
 });
 
+// ─── channel isolation ────────────────────────────────────────────────────────
+//
+// Two-pixel row: pixel 0 is bright [200,50,80], pixel 1 is dark [10,30,20].
+// Ascending sort by brightness moves pixel 1 to position 0 and pixel 0 to position 1.
+// Channel isolation means only the target channel's values are reordered;
+// the other two channels remain at their original pixel positions.
+
+describe('sort: sortRows() — channel isolation', () => {
+  function twoPixelBuf() {
+    // pixel 0: bright [200,50,80,255]  brightness ≈ 0.39
+    // pixel 1: dark   [10,30,20,255]   brightness ≈ 0.09
+    return makeBuffer([200, 50, 80, 255], [10, 30, 20, 255]);
+  }
+
+  it('channel=all moves the full pixel (baseline)', () => {
+    const buf = twoPixelBuf();
+    sortRows(buf, 2, 1, { ...FULL, channel: 'all' });
+    // After ascending sort: dark pixel at pos 0, bright at pos 1
+    expect(buf[0]).to.equal(10); // r
+    expect(buf[1]).to.equal(30); // g
+    expect(buf[2]).to.equal(20); // b
+    expect(buf[4]).to.equal(200); // r
+    expect(buf[5]).to.equal(50); // g
+    expect(buf[6]).to.equal(80); // b
+  });
+
+  it('channel=red reorders only red, leaves green and blue untouched', () => {
+    const buf = twoPixelBuf();
+    sortRows(buf, 2, 1, { ...FULL, channel: 'red' });
+    // Red values sorted: pos 0 gets 10, pos 1 gets 200
+    expect(buf[0]).to.equal(10); // red moved to pos 0
+    expect(buf[4]).to.equal(200); // red moved to pos 1
+    // Green and blue stay at their original positions (pixel 0's values)
+    expect(buf[1]).to.equal(50); // green at pos 0 unchanged
+    expect(buf[2]).to.equal(80); // blue at pos 0 unchanged
+    // And pixel 1's original green/blue stay at pos 1
+    expect(buf[5]).to.equal(30); // green at pos 1 unchanged
+    expect(buf[6]).to.equal(20); // blue at pos 1 unchanged
+  });
+
+  it('channel=green reorders only green, leaves red and blue untouched', () => {
+    const buf = twoPixelBuf();
+    sortRows(buf, 2, 1, { ...FULL, channel: 'green' });
+    // Green values sorted: pos 0 gets 30, pos 1 gets 50
+    expect(buf[1]).to.equal(30); // green moved to pos 0
+    expect(buf[5]).to.equal(50); // green moved to pos 1
+    // Red and blue untouched
+    expect(buf[0]).to.equal(200); // red at pos 0 unchanged
+    expect(buf[2]).to.equal(80); // blue at pos 0 unchanged
+    expect(buf[4]).to.equal(10); // red at pos 1 unchanged
+    expect(buf[6]).to.equal(20); // blue at pos 1 unchanged
+  });
+
+  it('channel=blue reorders only blue, leaves red and green untouched', () => {
+    const buf = twoPixelBuf();
+    sortRows(buf, 2, 1, { ...FULL, channel: 'blue' });
+    // Blue values sorted: pos 0 gets 20, pos 1 gets 80
+    expect(buf[2]).to.equal(20); // blue moved to pos 0
+    expect(buf[6]).to.equal(80); // blue moved to pos 1
+    // Red and green untouched
+    expect(buf[0]).to.equal(200); // red at pos 0 unchanged
+    expect(buf[1]).to.equal(50); // green at pos 0 unchanged
+    expect(buf[4]).to.equal(10); // red at pos 1 unchanged
+    expect(buf[5]).to.equal(30); // green at pos 1 unchanged
+  });
+
+  it('alpha is always preserved regardless of channel', () => {
+    const buf = makeBuffer([200, 50, 80, 200], [10, 30, 20, 100]);
+    sortRows(buf, 2, 1, { ...FULL, channel: 'red' });
+    // Alpha travels with the sorted pixel position in all modes
+    expect(buf[3]).to.equal(100); // dark pixel's alpha now at pos 0
+    expect(buf[7]).to.equal(200); // bright pixel's alpha now at pos 1
+  });
+});
+
+describe('sort: sortColumns() — channel isolation', () => {
+  it('channel=red reorders only red values down a column', () => {
+    // 2 rows × 1 col: pixel 0 bright [200,50,80], pixel 1 dark [10,30,20]
+    const buf = makeBuffer([200, 50, 80, 255], [10, 30, 20, 255]);
+    sortColumns(buf, 1, 2, { ...FULL, direction: 'vertical', channel: 'red' });
+    expect(buf[0]).to.equal(10); // red sorted to top (darker)
+    expect(buf[4]).to.equal(200); // red sorted to bottom (brighter)
+    expect(buf[1]).to.equal(50); // green at row 0 unchanged
+    expect(buf[2]).to.equal(80); // blue at row 0 unchanged
+    expect(buf[5]).to.equal(30); // green at row 1 unchanged
+    expect(buf[6]).to.equal(20); // blue at row 1 unchanged
+  });
+});
+
+describe('sort: sortPolar() — channel isolation', () => {
+  it('channel=red only modifies the red channel', () => {
+    // 1×3 single-ring strip. Pixels have distinct red values and brightness.
+    const buf = makeBuffer(
+      [200, 100, 100, 255], // bright
+      [10, 100, 100, 255], // dark
+      [120, 100, 100, 255], // mid
+    );
+    const greenBefore = [buf[1], buf[5], buf[9]];
+    const blueBefore = [buf[2], buf[6], buf[10]];
+
+    sortPolar(buf, 3, 1, { ...FULL, direction: 'radial', channel: 'red' });
+
+    // Green and blue channels are entirely untouched
+    expect([buf[1], buf[5], buf[9]]).to.deep.equal(greenBefore);
+    expect([buf[2], buf[6], buf[10]]).to.deep.equal(blueBefore);
+    // Red values are a permutation of the original reds
+    const redAfter = [buf[0], buf[4], buf[8]].sort((a, b) => a - b);
+    expect(redAfter).to.deep.equal([10, 120, 200]);
+  });
+});
+
 // ─── sortPolar ───────────────────────────────────────────────────────────────
 
 describe('sort: sortPolar() — radial', () => {
@@ -602,6 +714,35 @@ describe('sort: sortPolar() — pixel bitmask', () => {
     sortPolar(buf, 3, 3, { ...FULL, direction: 'radial', cx: 0, cy: 0 }, mask);
 
     expect(buf[2 * 4]).to.equal(maskedValBefore);
+    for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
+  });
+
+  it('respects opts.exclude rect without a pixelMask (isMasked rect branch)', () => {
+    // 3×3 image. opts.exclude covers the top-right pixel (x:2, y:0).
+    // That pixel must not move regardless of which ring it falls on.
+    const vals: [number, number, number, number][] = [
+      [255, 255, 255, 255],
+      [128, 128, 128, 255],
+      [10, 10, 10, 255], // (2,0) — inside exclude rect
+      [200, 200, 200, 255],
+      [50, 50, 50, 255],
+      [180, 180, 180, 255],
+      [90, 90, 90, 255],
+      [220, 220, 220, 255],
+      [60, 60, 60, 255],
+    ];
+    const buf = makeBuffer(...vals);
+    const excludedBefore = buf[2 * 4]; // red of pixel at index 2
+
+    sortPolar(buf, 3, 3, {
+      ...FULL,
+      direction: 'radial',
+      cx: 0,
+      cy: 0,
+      exclude: { x1: 2, y1: 0, x2: 2, y2: 0 },
+    });
+    // No pixelMask passed — exercises the opts.exclude branch inside isMasked
+    expect(buf[2 * 4]).to.equal(excludedBefore);
     for (let i = 3; i < buf.length; i += 4) expect(buf[i]).to.equal(255);
   });
 

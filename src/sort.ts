@@ -1,4 +1,4 @@
-import { Pixel, Rect, SortKey, SortOptions } from './types';
+import { Channel, Pixel, Rect, SortKey, SortOptions } from './types';
 import { getSortValue } from './color';
 import { buildIntervals, Interval } from './intervals';
 
@@ -199,7 +199,7 @@ export function sortRows(
       }
     }
 
-    writeRow(data, y, width, sorted);
+    writeRow(data, y, width, sorted, opts.channel);
   }
 }
 
@@ -231,7 +231,7 @@ export function sortColumns(
       }
     }
 
-    writeCol(data, x, width, sorted);
+    writeCol(data, x, width, sorted, opts.channel);
   }
 }
 
@@ -370,12 +370,13 @@ function sortAndWriteStrip(
     sorted = sortStrip(pixels, opts);
   }
 
+  const ch = opts.channel;
   for (let i = 0; i < n; i++) {
     const idx = ordered[i] * 4;
     const p = sorted[i];
-    data[idx] = p.r;
-    data[idx + 1] = p.g;
-    data[idx + 2] = p.b;
+    if (ch === 'all' || ch === 'red') data[idx] = p.r;
+    if (ch === 'all' || ch === 'green') data[idx + 1] = p.g;
+    if (ch === 'all' || ch === 'blue') data[idx + 2] = p.b;
     data[idx + 3] = p.a;
   }
 }
@@ -431,13 +432,19 @@ function readRow(data: Uint8Array, y: number, width: number): Pixel[] {
   return pixels;
 }
 
-function writeRow(data: Uint8Array, y: number, width: number, pixels: Pixel[]): void {
+function writeRow(
+  data: Uint8Array,
+  y: number,
+  width: number,
+  pixels: Pixel[],
+  channel: Channel = 'all',
+): void {
   for (let x = 0; x < pixels.length; x++) {
     const i = (y * width + x) * 4;
     const p = pixels[x];
-    data[i] = p.r;
-    data[i + 1] = p.g;
-    data[i + 2] = p.b;
+    if (channel === 'all' || channel === 'red') data[i] = p.r;
+    if (channel === 'all' || channel === 'green') data[i + 1] = p.g;
+    if (channel === 'all' || channel === 'blue') data[i + 2] = p.b;
     data[i + 3] = p.a;
   }
 }
@@ -451,13 +458,19 @@ function readCol(data: Uint8Array, x: number, width: number, height: number): Pi
   return pixels;
 }
 
-function writeCol(data: Uint8Array, x: number, width: number, pixels: Pixel[]): void {
+function writeCol(
+  data: Uint8Array,
+  x: number,
+  width: number,
+  pixels: Pixel[],
+  channel: Channel = 'all',
+): void {
   for (let y = 0; y < pixels.length; y++) {
     const i = (y * width + x) * 4;
     const p = pixels[y];
-    data[i] = p.r;
-    data[i + 1] = p.g;
-    data[i + 2] = p.b;
+    if (channel === 'all' || channel === 'red') data[i] = p.r;
+    if (channel === 'all' || channel === 'green') data[i + 1] = p.g;
+    if (channel === 'all' || channel === 'blue') data[i + 2] = p.b;
     data[i + 3] = p.a;
   }
 }

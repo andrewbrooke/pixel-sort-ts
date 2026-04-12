@@ -1,6 +1,7 @@
-import { Direction, IntervalMode, SortKey, SortOptions } from './types';
+import { Channel, Direction, IntervalMode, SortKey, SortOptions } from './types';
 
 export const DIRECTIONS: Direction[] = ['horizontal', 'vertical', 'both', 'radial', 'spoke'];
+export const CHANNELS: Channel[] = ['all', 'red', 'green', 'blue'];
 export const SORT_KEYS: SortKey[] = [
   'brightness',
   'hue',
@@ -24,4 +25,5 @@ export const DEFAULTS: SortOptions = {
   excludeInvert: false,
   cx: 0.5,
   cy: 0.5,
+  channel: 'all',
 };

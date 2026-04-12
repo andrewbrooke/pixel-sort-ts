@@ -1,8 +1,8 @@
 'use client';
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import type { SortOptions, Direction, SortKey, IntervalMode, Rect } from '@core/types';
-import { DIRECTIONS, SORT_KEYS, INTERVAL_MODES, DEFAULTS } from '@core/constants';
+import type { SortOptions, Direction, SortKey, IntervalMode, Channel, Rect } from '@core/types';
+import { CHANNELS, DIRECTIONS, SORT_KEYS, INTERVAL_MODES, DEFAULTS } from '@core/constants';
 
 const CANVAS_MIME: Record<string, string> = {
   'image/jpeg': 'image/jpeg',
@@ -25,6 +25,8 @@ const TOOLTIPS: Record<string, string> = {
   maxLen: 'Maximum segment length in pixels for random mode.',
   reverse: 'Sort pixels in descending order instead of ascending.',
   exclude: 'Draw a rectangle on the original image to protect that area from sorting.',
+  channel:
+    'Sort only one colour channel independently. The other two channels stay frozen at their original positions, producing chromatic-aberration-style colour shifts.',
 };
 
 type SourceImage = { data: Uint8Array; width: number; height: number };
@@ -199,7 +201,7 @@ export default function PixelSorter() {
     if (processing || !pendingSortRef.current || !autoSort || !source.current) return;
     pendingSortRef.current = false;
     runRef.current();
-  }, [processing, autoSort]);  
+  }, [processing, autoSort]);
 
   const download = useCallback(() => {
     if (!outputUrl) return;
@@ -343,6 +345,14 @@ export default function PixelSorter() {
             <select value={opts.key} onChange={e => set('key', e.target.value as SortKey)}>
               {SORT_KEYS.map(k => (
                 <option key={k}>{k}</option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="channel" tooltip={TOOLTIPS.channel}>
+            <select value={opts.channel} onChange={e => set('channel', e.target.value as Channel)}>
+              {CHANNELS.map(c => (
+                <option key={c}>{c}</option>
               ))}
             </select>
           </Field>

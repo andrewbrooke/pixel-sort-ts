@@ -4,6 +4,9 @@ export type SortKey = 'brightness' | 'hue' | 'saturation' | 'lightness' | 'red' 
 
 export type IntervalMode = 'full' | 'threshold' | 'random';
 
+/** Which colour channel to reorder. 'all' = current behaviour (full pixel moves). */
+export type Channel = 'all' | 'red' | 'green' | 'blue';
+
 export interface Pixel {
   r: number;
   g: number;
@@ -34,4 +37,6 @@ export interface SortOptions {
   cx: number;
   /** Focal point Y for radial/spoke directions, normalised 0–1. Defaults to 0.5 (centre). */
   cy: number;
+  /** Which channel to reorder. Defaults to 'all' (full pixel moves). */
+  channel: Channel;
 }

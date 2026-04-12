@@ -116,11 +116,19 @@ describe('PixelSorter — file loading', () => {
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
 describe('PixelSorter — controls', () => {
-  it('renders direction, key, and mode selects with correct defaults', () => {
+  it('renders direction, key, mode, and channel selects with correct defaults', () => {
     render(<PixelSorter />);
     expect(screen.getByDisplayValue('horizontal')).toBeInTheDocument();
     expect(screen.getByDisplayValue('brightness')).toBeInTheDocument();
     expect(screen.getByDisplayValue('threshold')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('all')).toBeInTheDocument();
+  });
+
+  it('channel select contains all four options', () => {
+    render(<PixelSorter />);
+    const select = screen.getByDisplayValue('all');
+    const options = Array.from((select as HTMLSelectElement).options).map(o => o.value);
+    expect(options).toEqual(['all', 'red', 'green', 'blue']);
   });
 
   it('shows lo/hi sliders only in threshold mode', async () => {
@@ -149,6 +157,15 @@ describe('PixelSorter — controls', () => {
     fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }));
     expect(screen.getByDisplayValue('horizontal')).toBeInTheDocument();
     expect(screen.getByDisplayValue('brightness')).toBeInTheDocument();
+  });
+
+  it('reset button restores channel to all', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('all'), 'red');
+    expect(screen.getByDisplayValue('red')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }));
+    expect(screen.getByDisplayValue('all')).toBeInTheDocument();
   });
 });
 
@@ -413,6 +430,26 @@ describe('PixelSorter — auto sort', () => {
 
     await act(async () => {
       await user.selectOptions(screen.getByDisplayValue('brightness'), 'hue');
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('changing channel triggers auto sort', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await user.click(screen.getByRole('checkbox', { name: /auto sort/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      await user.selectOptions(screen.getByDisplayValue('all'), 'red');
     });
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),

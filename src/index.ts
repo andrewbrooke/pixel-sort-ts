@@ -4,9 +4,9 @@ import { program } from 'commander';
 import path from 'path';
 import { readImage, writeImage } from './image';
 import { sortRows, sortColumns, sortPolar } from './sort';
-import { Direction, SortKey, IntervalMode, SortOptions } from './types';
+import { Channel, Direction, SortKey, IntervalMode, SortOptions } from './types';
 import type { Rect } from './types';
-import { DIRECTIONS, SORT_KEYS, INTERVAL_MODES, DEFAULTS } from './constants';
+import { CHANNELS, DIRECTIONS, SORT_KEYS, INTERVAL_MODES, DEFAULTS } from './constants';
 
 const DIR_ABBREV: Record<Direction, string> = {
   horizontal: 'h',
@@ -55,6 +55,7 @@ function defaultOutputPath(input: string, opts: SortOptions): string {
   if (opts.mode === 'threshold') parts.push(`${opts.lo}-${opts.hi}`);
   if (opts.mode === 'random') parts.push(`${opts.maxLen}`);
   if (opts.reverse) parts.push('r');
+  if (opts.channel !== 'all') parts.push(opts.channel.slice(0, 1));
   if (opts.exclude) parts.push(opts.excludeInvert ? 'inv' : 'excl');
 
   return path.join(path.dirname(input), `${base}_${parts.join('_')}${ext}`);
@@ -81,6 +82,7 @@ program
   .option('--invert-mask', 'Sort ONLY inside the --exclude rectangle instead of outside it')
   .option('--cx <n>', 'Focal point X for radial/spoke (0–1, default 0.5)', parseFloat, DEFAULTS.cx)
   .option('--cy <n>', 'Focal point Y for radial/spoke (0–1, default 0.5)', parseFloat, DEFAULTS.cy)
+  .option('--channel <ch>', `Isolate one channel: ${CHANNELS.join(' | ')}`, DEFAULTS.channel)
   .action(async (input: string, opts) => {
     if (!DIRECTIONS.includes(opts.direction)) {
       console.error(`Invalid direction. Choose: ${DIRECTIONS.join(', ')}`);
@@ -92,6 +94,10 @@ program
     }
     if (!INTERVAL_MODES.includes(opts.mode)) {
       console.error(`Invalid mode. Choose: ${INTERVAL_MODES.join(', ')}`);
+      process.exit(1);
+    }
+    if (!CHANNELS.includes(opts.channel)) {
+      console.error(`Invalid channel. Choose: ${CHANNELS.join(', ')}`);
       process.exit(1);
     }
 
@@ -107,6 +113,7 @@ program
       excludeInvert: !!opts.invertMask,
       cx: opts.cx,
       cy: opts.cy,
+      channel: opts.channel as Channel,
     };
 
     const output = opts.output ?? defaultOutputPath(input, sortOpts);
