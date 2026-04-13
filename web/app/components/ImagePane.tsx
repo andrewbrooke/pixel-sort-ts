@@ -36,16 +36,7 @@ export function ImagePane({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span
-          style={{
-            color: 'var(--muted)',
-            fontSize: '11px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {label}
-        </span>
+        <span className="field-label">{label}</span>
         {onReplace && (
           <button
             onClick={onReplace}

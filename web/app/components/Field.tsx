@@ -67,16 +67,7 @@ export function Field({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span
-          style={{
-            color: 'var(--muted)',
-            textTransform: 'uppercase',
-            fontSize: '11px',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {label}
-        </span>
+        <span className="field-label">{label}</span>
         {tooltip && <Tooltip text={tooltip} />}
       </div>
       {children}

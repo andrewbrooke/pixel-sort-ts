@@ -88,16 +88,7 @@ export function ControlsPanel({
 
       {(opts.direction === 'radial' || opts.direction === 'spoke') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span
-            style={{
-              color: 'var(--muted)',
-              fontSize: '11px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            focal point
-          </span>
+          <span className="field-label">focal point</span>
           <span style={{ color: 'var(--muted)', fontSize: '10px' }}>
             click image to set · {(opts.cx * 100).toFixed(0)}%, {(opts.cy * 100).toFixed(0)}%
           </span>
@@ -106,15 +97,8 @@ export function ControlsPanel({
               set('cx', 0.5);
               set('cy', 0.5);
             }}
-            style={{
-              padding: '3px 0',
-              fontSize: '11px',
-              background: 'transparent',
-              color: 'var(--muted)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              cursor: 'pointer',
-            }}
+            className="btn-ghost"
+            style={{ padding: '3px 0', fontSize: '11px' }}
           >
             reset to centre
           </button>
@@ -187,7 +171,7 @@ export function ControlsPanel({
       )}
 
       <Field label="reverse" tooltip={TOOLTIPS.reverse}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+        <label className="checkbox-row">
           <input
             type="checkbox"
             checked={opts.reverse}
@@ -201,7 +185,7 @@ export function ControlsPanel({
       </Field>
 
       <Field label="exclude" tooltip={TOOLTIPS.exclude}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+        <label className="checkbox-row">
           <input
             type="checkbox"
             checked={maskEnabled}
@@ -235,15 +219,7 @@ export function ControlsPanel({
           </div>
         )}
         {maskEnabled && (
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              cursor: 'pointer',
-              paddingLeft: '2px',
-            }}
-          >
+          <label className="checkbox-row" style={{ paddingLeft: '2px' }}>
             <input
               type="checkbox"
               checked={opts.excludeInvert}
@@ -273,7 +249,7 @@ export function ControlsPanel({
       </Field>
 
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+        <label className="checkbox-row">
           <input
             type="checkbox"
             checked={autoSort}
@@ -300,43 +276,16 @@ export function ControlsPanel({
           {processing ? 'processing...' : 'sort'}
         </button>
 
-        <button
-          onClick={onReset}
-          style={{
-            padding: '8px',
-            background: 'transparent',
-            color: 'var(--muted)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-          }}
-        >
+        <button onClick={onReset} className="btn-ghost">
           reset to defaults
         </button>
 
         {outputUrl && (
           <>
-            <button
-              onClick={onDownload}
-              style={{
-                padding: '8px',
-                background: 'transparent',
-                color: 'var(--accent)',
-                border: '1px solid var(--accent)',
-                borderRadius: 'var(--radius)',
-              }}
-            >
+            <button onClick={onDownload} className="btn-accent">
               download
             </button>
-            <button
-              onClick={onUseAsInput}
-              style={{
-                padding: '8px',
-                background: 'transparent',
-                color: 'var(--muted)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-              }}
-            >
+            <button onClick={onUseAsInput} className="btn-ghost">
               use as input
             </button>
           </>
