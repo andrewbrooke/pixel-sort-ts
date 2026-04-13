@@ -18,6 +18,16 @@
   --font: 'Courier New', Courier, monospace;
 }
 
+[data-theme='light'] {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --border: #d0d0d0;
+  --text: #1a1a1a;
+  --muted: #888;
+  --accent: #2e7fd9;
+  --accent-dim: #1a6abf;
+}
+
 html,
 body {
   height: 100%;
@@ -46,6 +56,38 @@ input[type='number'] {
   border-radius: var(--radius);
   padding: 4px 8px;
   width: 100%;
+}
+
+/* ─── Utility classes ───────────────────────────────────────────────────────── */
+
+.field-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+
+.btn-accent {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 
 select:focus,

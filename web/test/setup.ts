@@ -65,6 +65,10 @@ vi.stubGlobal(
   },
 );
 
+// ─── matchMedia ──────────────────────────────────────────────────────────────
+// jsdom doesn't implement matchMedia. Stub with a default of no system preference.
+vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+
 // ─── localStorage ─────────────────────────────────────────────────────────────
 // jsdom provides localStorage but vitest resets the DOM between tests,
 // so we use a simple in-memory stub for predictability.
