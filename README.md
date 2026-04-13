@@ -39,13 +39,16 @@ The input image is never modified. Output is written to a new file named after t
 
 | Flag              | Default      | Description                                                                                             |
 | ----------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
-| `-d, --direction` | `horizontal` | Sort direction: `horizontal` \| `vertical` \| `both`                                                    |
+| `-d, --direction` | `horizontal` | Sort direction: `horizontal` \| `vertical` \| `both` \| `radial` \| `spoke`                             |
 | `-k, --key`       | `brightness` | Property to sort by: `brightness` \| `hue` \| `saturation` \| `lightness` \| `red` \| `green` \| `blue` |
 | `-m, --mode`      | `threshold`  | How to define sortable intervals: `threshold` \| `full` \| `random`                                     |
 | `--lo`            | `0.25`       | Lower brightness bound for `threshold` mode (0–1)                                                       |
 | `--hi`            | `0.8`        | Upper brightness bound for `threshold` mode (0–1)                                                       |
-| `-r, --reverse`   | `false`      | Sort in descending order                                                                                |
+| `-r, --reverse`   | `false`      | Sort in descending order                                                                                 |
 | `--max-len`       | `200`        | Maximum interval length in pixels for `random` mode                                                     |
+| `--cx`            | `0.5`        | Focal point X for `radial` / `spoke` directions, normalised 0–1                                         |
+| `--cy`            | `0.5`        | Focal point Y for `radial` / `spoke` directions, normalised 0–1                                         |
+| `--channel`       | `all`        | Isolate one colour channel: `all` \| `red` \| `green` \| `blue`                                         |
 | `--exclude`       | —            | Protect a rectangle from sorting: `x1,y1,x2,y2` in pixel coordinates (inclusive)                        |
 | `--invert-mask`   | `false`      | Reverse the exclude mask — sort **only** inside the rectangle instead of outside it                     |
 | `-o, --output`    | auto         | Output file path                                                                                        |
@@ -65,6 +68,19 @@ The input image is never modified. Output is written to a new file named after t
 | `saturation`             | HSL saturation (color intensity)                 |
 | `lightness`              | HSL lightness                                    |
 | `red` / `green` / `blue` | Raw channel value                                |
+
+### Radial and spoke directions
+
+- **`radial`** — groups pixels into concentric rings based on their distance from a focal point, then sorts each ring. Produces circular, halo-like streaks radiating outward.
+- **`spoke`** — groups pixels into lines radiating outward from a focal point and sorts each line from centre to edge. Produces a starburst or sunray effect.
+
+Use `--cx` and `--cy` (both 0–1, default `0.5`) to move the focal point away from the centre.
+
+### Channel isolation
+
+`--channel red/green/blue` sorts only that channel's values while leaving the other two channels frozen at their original pixel positions. The sort order is still determined by the chosen `--key` — it's the write-back that is filtered, not the ranking. This produces chromatic-aberration and colour-shift effects that aren't possible by sorting full pixels.
+
+`--channel all` (the default) is equivalent to the standard behaviour where the full pixel moves.
 
 ### Exclude mask
 
