@@ -42,7 +42,8 @@ function parseExclude(value: string): Rect {
 
 function formatModeDetail(opts: SortOptions): string {
   if (opts.mode === 'threshold') return ` [${opts.lo}–${opts.hi}]`;
-  if (opts.mode === 'random') return ` (max ${opts.maxLen}px)`;
+  if (opts.mode === 'random')
+    return ` (max ${opts.maxLen}px${opts.seed !== undefined ? `, seed ${opts.seed}` : ''})`;
   return '';
 }
 
@@ -53,7 +54,10 @@ function defaultOutputPath(input: string, opts: SortOptions): string {
   const parts = [DIR_ABBREV[opts.direction], KEY_ABBREV[opts.key], MODE_ABBREV[opts.mode]];
 
   if (opts.mode === 'threshold') parts.push(`${opts.lo}-${opts.hi}`);
-  if (opts.mode === 'random') parts.push(`${opts.maxLen}`);
+  if (opts.mode === 'random') {
+    parts.push(`${opts.maxLen}`);
+    if (opts.seed !== undefined) parts.push(`s${opts.seed}`);
+  }
   if (opts.reverse) parts.push('r');
   if (opts.channel !== 'all') parts.push(opts.channel.slice(0, 1));
   if (opts.exclude) parts.push(opts.excludeInvert ? 'inv' : 'excl');
@@ -83,6 +87,7 @@ program
   .option('--cx <n>', 'Focal point X for radial/spoke (0–1, default 0.5)', parseFloat, DEFAULTS.cx)
   .option('--cy <n>', 'Focal point Y for radial/spoke (0–1, default 0.5)', parseFloat, DEFAULTS.cy)
   .option('--channel <ch>', `Isolate one channel: ${CHANNELS.join(' | ')}`, DEFAULTS.channel)
+  .option('--seed <n>', 'PRNG seed for reproducible random-mode output', parseInt)
   .action(async (input: string, opts) => {
     if (!DIRECTIONS.includes(opts.direction)) {
       console.error(`Invalid direction. Choose: ${DIRECTIONS.join(', ')}`);
@@ -114,6 +119,7 @@ program
       cx: opts.cx,
       cy: opts.cy,
       channel: opts.channel as Channel,
+      seed: opts.seed,
     };
 
     const output = opts.output ?? defaultOutputPath(input, sortOpts);

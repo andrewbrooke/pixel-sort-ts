@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { buildIntervals } from '../src/intervals';
+import { buildIntervals, mulberry32 } from '../src/intervals';
 import type { Pixel } from '../src/types';
 
 function px(r: number, g: number, b: number): Pixel {
@@ -63,6 +63,49 @@ describe('intervals: buildIntervals() — threshold mode', () => {
       [0, 1],
       [2, 3],
     ]);
+  });
+});
+
+describe('intervals: mulberry32()', () => {
+  it('returns values in [0, 1)', () => {
+    const rand = mulberry32(0);
+    for (let i = 0; i < 50; i++) {
+      const v = rand();
+      expect(v).to.be.at.least(0);
+      expect(v).to.be.lessThan(1);
+    }
+  });
+
+  it('same seed produces the same sequence', () => {
+    const a = mulberry32(42);
+    const b = mulberry32(42);
+    for (let i = 0; i < 10; i++) {
+      expect(a()).to.equal(b());
+    }
+  });
+
+  it('advances state on each call', () => {
+    const rand = mulberry32(1);
+    expect(rand()).to.not.equal(rand());
+  });
+
+  it('different seeds produce different first values', () => {
+    expect(mulberry32(1)()).to.not.equal(mulberry32(2)());
+  });
+});
+
+describe('intervals: buildIntervals() — random mode with seed', () => {
+  it('same seed produces identical intervals', () => {
+    const pixels = Array.from({ length: 100 }, () => px(128, 128, 128));
+    const opts = { mode: 'random' as const, lo: 0, hi: 1, maxLen: 20, seed: 77 };
+    expect(buildIntervals(pixels, opts)).to.deep.equal(buildIntervals(pixels, opts));
+  });
+
+  it('different seeds produce different intervals', () => {
+    const pixels = Array.from({ length: 100 }, () => px(128, 128, 128));
+    const a = buildIntervals(pixels, { mode: 'random', lo: 0, hi: 1, maxLen: 20, seed: 1 });
+    const b = buildIntervals(pixels, { mode: 'random', lo: 0, hi: 1, maxLen: 20, seed: 2 });
+    expect(a).to.not.deep.equal(b);
   });
 });
 

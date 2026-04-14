@@ -39,4 +39,6 @@ export interface SortOptions {
   cy: number;
   /** Which channel to reorder. Defaults to 'all' (full pixel moves). */
   channel: Channel;
+  /** Optional seed for the random-interval PRNG. Undefined = unseeded Math.random(). */
+  seed?: number;
 }

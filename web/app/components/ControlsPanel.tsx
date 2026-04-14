@@ -12,6 +12,7 @@ const TOOLTIPS: Record<string, string> = {
   lo: 'Lower brightness bound (0–1). Pixels below this value act as interval boundaries in threshold mode.',
   hi: 'Upper brightness bound (0–1). Pixels above this value act as interval boundaries in threshold mode.',
   maxLen: 'Maximum segment length in pixels for random mode.',
+  seed: 'PRNG seed for random mode. Same seed + same settings always produce identical output. Leave blank for unseeded (different each run).',
   reverse: 'Sort pixels in descending order instead of ascending.',
   exclude: 'Draw a rectangle on the original image to protect that area from sorting.',
   channel:
@@ -159,15 +160,29 @@ export function ControlsPanel({
       )}
 
       {opts.mode === 'random' && (
-        <Field label="max-len" tooltip={TOOLTIPS.maxLen}>
-          <input
-            type="number"
-            min={1}
-            max={9999}
-            value={opts.maxLen}
-            onChange={e => set('maxLen', parseInt(e.target.value) || 1)}
-          />
-        </Field>
+        <>
+          <Field label="max-len" tooltip={TOOLTIPS.maxLen}>
+            <input
+              type="number"
+              min={1}
+              max={9999}
+              value={opts.maxLen}
+              onChange={e => set('maxLen', parseInt(e.target.value) || 1)}
+            />
+          </Field>
+          <Field label="seed" tooltip={TOOLTIPS.seed}>
+            <input
+              type="number"
+              min={0}
+              placeholder="random"
+              value={opts.seed ?? ''}
+              onChange={e => {
+                const v = e.target.value;
+                set('seed', v === '' ? undefined : parseInt(v));
+              }}
+            />
+          </Field>
+        </>
       )}
 
       <Field label="reverse" tooltip={TOOLTIPS.reverse}>
