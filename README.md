@@ -46,6 +46,7 @@ The input image is never modified. Output is written to a new file named after t
 | `--hi`            | `0.8`        | Upper brightness bound for `threshold` mode (0–1)                                                       |
 | `-r, --reverse`   | `false`      | Sort in descending order                                                                                 |
 | `--max-len`       | `200`        | Maximum interval length in pixels for `random` mode                                                     |
+| `--seed`          | —            | Integer seed for the `random`-mode PRNG. Omit for a different result each run                           |
 | `--cx`            | `0.5`        | Focal point X for `radial` / `spoke` directions, normalised 0–1                                         |
 | `--cy`            | `0.5`        | Focal point Y for `radial` / `spoke` directions, normalised 0–1                                         |
 | `--channel`       | `all`        | Isolate one colour channel: `all` \| `red` \| `green` \| `blue`                                         |
@@ -57,7 +58,7 @@ The input image is never modified. Output is written to a new file named after t
 
 - **`threshold`** — only sorts runs of pixels whose brightness falls within `[--lo, --hi]`. Pixels outside the range act as boundaries, preserving the structure of very dark or very bright areas. This is the classic pixel sort effect.
 - **`full`** — sorts the entire row or column as one interval. Produces a fully sorted, rainbow-like streak across the image.
-- **`random`** — splits each row/column into random-length intervals (up to `--max-len` pixels) and sorts each one independently. Produces a choppier, more fragmented effect.
+- **`random`** — splits each row/column into random-length intervals (up to `--max-len` pixels) and sorts each one independently. Produces a choppier, more fragmented effect. Pass `--seed` to make the output reproducible — the same seed always produces the same interval pattern.
 
 ### Sort keys
 
@@ -100,6 +101,9 @@ pixel-sort photo.jpg -d both -k saturation --lo 0.4 --hi 0.7
 
 # Random intervals, reversed sort, custom output path
 pixel-sort photo.jpg -m random --max-len 300 -r -o out.png
+
+# Random intervals with a fixed seed — reproducible and shareable
+pixel-sort photo.jpg -m random --max-len 150 --seed 42
 
 # Full horizontal sort by red channel
 pixel-sort photo.jpg -k red -m full

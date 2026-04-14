@@ -180,22 +180,26 @@ export function sortRows(
 ): void {
   for (let y = 0; y < height; y++) {
     const pixels = readRow(data, y, width);
+    const rowOpts =
+      opts.seed !== undefined
+        ? { ...opts, seed: (opts.seed ^ ((y + 1) * 0x9e3779b9)) >>> 0 }
+        : opts;
 
     let sorted: Pixel[];
     if (pixelMask) {
       const runs = getMaskedRunsFromRow(pixelMask, y, width);
       if (runs.length === 0 && opts.excludeInvert) continue;
-      sorted = sortStripWithRuns(pixels, opts, runs);
+      sorted = sortStripWithRuns(pixels, rowOpts, runs);
     } else {
       const maskRange = opts.exclude ? getMaskRange(opts.exclude, y, 'x') : null;
       if (maskRange) {
         sorted = opts.excludeInvert
-          ? sortStripInverted(pixels, opts, maskRange)
-          : sortStripWithMask(pixels, opts, maskRange);
+          ? sortStripInverted(pixels, rowOpts, maskRange)
+          : sortStripWithMask(pixels, rowOpts, maskRange);
       } else if (opts.excludeInvert) {
         continue;
       } else {
-        sorted = sortStrip(pixels, opts);
+        sorted = sortStrip(pixels, rowOpts);
       }
     }
 
@@ -212,22 +216,26 @@ export function sortColumns(
 ): void {
   for (let x = 0; x < width; x++) {
     const pixels = readCol(data, x, width, height);
+    const colOpts =
+      opts.seed !== undefined
+        ? { ...opts, seed: (opts.seed ^ ((x + 1) * 0x9e3779b9)) >>> 0 }
+        : opts;
 
     let sorted: Pixel[];
     if (pixelMask) {
       const runs = getMaskedRunsFromCol(pixelMask, x, width, height);
       if (runs.length === 0 && opts.excludeInvert) continue;
-      sorted = sortStripWithRuns(pixels, opts, runs);
+      sorted = sortStripWithRuns(pixels, colOpts, runs);
     } else {
       const maskRange = opts.exclude ? getMaskRange(opts.exclude, x, 'y') : null;
       if (maskRange) {
         sorted = opts.excludeInvert
-          ? sortStripInverted(pixels, opts, maskRange)
-          : sortStripWithMask(pixels, opts, maskRange);
+          ? sortStripInverted(pixels, colOpts, maskRange)
+          : sortStripWithMask(pixels, colOpts, maskRange);
       } else if (opts.excludeInvert) {
         continue;
       } else {
-        sorted = sortStrip(pixels, opts);
+        sorted = sortStrip(pixels, colOpts);
       }
     }
 

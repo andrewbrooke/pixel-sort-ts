@@ -141,12 +141,29 @@ describe('PixelSorter — controls', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
-  it('shows max-len input only in random mode', async () => {
+  it('shows max-len and seed inputs only in random mode', async () => {
     const user = userEvent.setup();
     render(<PixelSorter />);
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     await user.selectOptions(screen.getByDisplayValue('threshold'), 'random');
-    expect(screen.getByRole('spinbutton')).toBeInTheDocument();
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(2);
+  });
+
+  it('seed input retains a typed value', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('threshold'), 'random');
+    await user.type(screen.getByPlaceholderText('random'), '42');
+    expect(screen.getByPlaceholderText('random')).toHaveValue(42);
+  });
+
+  it('clearing the seed field leaves it blank, not NaN', async () => {
+    const user = userEvent.setup();
+    render(<PixelSorter />);
+    await user.selectOptions(screen.getByDisplayValue('threshold'), 'random');
+    await user.type(screen.getByPlaceholderText('random'), '42');
+    await user.clear(screen.getByPlaceholderText('random'));
+    expect(screen.getByPlaceholderText('random')).toHaveValue(null);
   });
 
   it('reset button restores default select values', async () => {
