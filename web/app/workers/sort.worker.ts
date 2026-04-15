@@ -15,16 +15,24 @@ addEventListener('message', ({ data }: MessageEvent<SortWorkerInput>) => {
   const pixels = new Uint8Array(buffer);
   const pixelMask = mask ? new Uint8Array(mask) : undefined;
 
-  if (opts.direction === 'horizontal' || opts.direction === 'both') {
-    sortRows(pixels, width, height, opts, pixelMask);
+  const isBoth = opts.direction === 'both';
+
+  if (opts.direction === 'horizontal' || isBoth) {
+    sortRows(pixels, width, height, opts, pixelMask, frac => {
+      postMessage({ type: 'progress', percent: isBoth ? frac * 0.5 : frac });
+    });
   }
-  if (opts.direction === 'vertical' || opts.direction === 'both') {
-    sortColumns(pixels, width, height, opts, pixelMask);
+  if (opts.direction === 'vertical' || isBoth) {
+    sortColumns(pixels, width, height, opts, pixelMask, frac => {
+      postMessage({ type: 'progress', percent: isBoth ? 0.5 + frac * 0.5 : frac });
+    });
   }
   if (opts.direction === 'radial' || opts.direction === 'spoke') {
-    sortPolar(pixels, width, height, opts, pixelMask);
+    sortPolar(pixels, width, height, opts, pixelMask, frac => {
+      postMessage({ type: 'progress', percent: frac });
+    });
   }
 
   // Transfer the buffer back to the main thread (zero-copy)
-  postMessage(buffer, { transfer: [buffer] });
+  postMessage({ type: 'done', buffer }, { transfer: [buffer] });
 });

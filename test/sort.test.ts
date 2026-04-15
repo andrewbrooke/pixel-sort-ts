@@ -765,3 +765,111 @@ describe('sort: sortPolar() — pixel bitmask', () => {
     expect(Array.from(buf)).to.deep.equal(before);
   });
 });
+
+// ─── onProgress callbacks ─────────────────────────────────────────────────────
+
+describe('sort: onProgress — sortRows', () => {
+  it('is called at least once and ends at exactly 1', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 20; i++) vals.push([i * 12, i * 12, i * 12, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortRows(buf, 2, 10, FULL, undefined, f => calls.push(f));
+
+    expect(calls.length).to.be.greaterThan(0);
+    expect(calls[calls.length - 1]).to.equal(1);
+  });
+
+  it('all reported fractions are in (0, 1] and non-decreasing', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 20; i++) vals.push([i * 12, i * 12, i * 12, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortRows(buf, 2, 10, FULL, undefined, f => calls.push(f));
+
+    for (let i = 0; i < calls.length; i++) {
+      expect(calls[i]).to.be.greaterThan(0);
+      expect(calls[i]).to.be.at.most(1);
+      if (i > 0) expect(calls[i]).to.be.at.least(calls[i - 1]);
+    }
+  });
+});
+
+describe('sort: onProgress — sortColumns', () => {
+  it('is called at least once and ends at exactly 1', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 20; i++) vals.push([i * 12, i * 12, i * 12, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortColumns(buf, 10, 2, { ...FULL, direction: 'vertical' }, undefined, f => calls.push(f));
+
+    expect(calls.length).to.be.greaterThan(0);
+    expect(calls[calls.length - 1]).to.equal(1);
+  });
+
+  it('all reported fractions are in (0, 1] and non-decreasing', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 20; i++) vals.push([i * 12, i * 12, i * 12, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortColumns(buf, 10, 2, { ...FULL, direction: 'vertical' }, undefined, f => calls.push(f));
+
+    for (let i = 0; i < calls.length; i++) {
+      expect(calls[i]).to.be.greaterThan(0);
+      expect(calls[i]).to.be.at.most(1);
+      if (i > 0) expect(calls[i]).to.be.at.least(calls[i - 1]);
+    }
+  });
+});
+
+describe('sort: onProgress — sortPolar (radial)', () => {
+  it('is called at least once and ends at exactly 1', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 25; i++) vals.push([i * 10, i * 10, i * 10, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'radial', cx: 0.5, cy: 0.5 }, undefined, f =>
+      calls.push(f),
+    );
+
+    expect(calls.length).to.be.greaterThan(0);
+    expect(calls[calls.length - 1]).to.equal(1);
+  });
+
+  it('all reported fractions are in (0, 1]', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 25; i++) vals.push([i * 10, i * 10, i * 10, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'radial', cx: 0.5, cy: 0.5 }, undefined, f =>
+      calls.push(f),
+    );
+
+    for (const f of calls) {
+      expect(f).to.be.greaterThan(0);
+      expect(f).to.be.at.most(1);
+    }
+  });
+});
+
+describe('sort: onProgress — sortPolar (spoke)', () => {
+  it('is called at least once and ends at exactly 1', () => {
+    const vals: [number, number, number, number][] = [];
+    for (let i = 0; i < 25; i++) vals.push([i * 10, i * 10, i * 10, 255]);
+    const buf = makeBuffer(...vals);
+
+    const calls: number[] = [];
+    sortPolar(buf, 5, 5, { ...FULL, direction: 'spoke', cx: 0.5, cy: 0.5 }, undefined, f =>
+      calls.push(f),
+    );
+
+    expect(calls.length).to.be.greaterThan(0);
+    expect(calls[calls.length - 1]).to.equal(1);
+  });
+});

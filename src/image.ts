@@ -21,5 +21,6 @@ export async function writeImage(filePath: string, imageData: ImageData): Promis
 
   // jimp 1.x types write() with a complex template literal type for the path;
   // cast to any to avoid it while keeping runtime behaviour correct.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (img as any).write(filePath);
 }

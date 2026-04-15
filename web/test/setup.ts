@@ -19,7 +19,7 @@ class MockWorker {
     // (macro-task) would fire after act() has already finished, causing React to warn
     // about state updates outside act() in auto-sort tests.
     const out = new ArrayBuffer(data.width * data.height * 4);
-    this.onmessage?.({ data: out } as MessageEvent);
+    this.onmessage?.({ data: { type: 'done', buffer: out } } as MessageEvent);
   }
 
   terminate() {}

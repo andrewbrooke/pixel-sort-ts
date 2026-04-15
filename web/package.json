@@ -14,6 +14,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "gifenc": "^1.0.3",
+    "gifuct-js": "^2.1.2",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

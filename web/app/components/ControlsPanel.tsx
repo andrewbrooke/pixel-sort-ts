@@ -4,6 +4,10 @@ import type { SortOptions, Direction, SortKey, IntervalMode, Channel } from '@co
 import { CHANNELS, DIRECTIONS, SORT_KEYS, INTERVAL_MODES } from '@core/constants';
 import { Field } from './Field';
 
+function fmtMs(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
 const TOOLTIPS: Record<string, string> = {
   direction:
     'Axis to sort along. Horizontal/vertical/both use straight rows or columns. Radial sorts along concentric rings; spoke sorts along lines radiating from a focal point.',
@@ -31,6 +35,10 @@ export function ControlsPanel({
   inputUrl,
   outputUrl,
   lassoPoints,
+  gifFrameCount,
+  gifProgress,
+  lastSortMs,
+  sortProgress,
   onToggleMask,
   onSetMaskMode,
   onSliderLoChange,
@@ -52,6 +60,10 @@ export function ControlsPanel({
   inputUrl: string | null;
   outputUrl: string | null;
   lassoPoints: { x: number; y: number }[];
+  gifFrameCount?: number;
+  gifProgress?: number;
+  lastSortMs?: number;
+  sortProgress?: number;
   onToggleMask: (enabled: boolean) => void;
   onSetMaskMode: (mode: 'rect' | 'lasso') => void;
   onSliderLoChange: (val: number) => void;
@@ -290,6 +302,50 @@ export function ControlsPanel({
         >
           {processing ? 'processing...' : 'sort'}
         </button>
+
+        {(processing || lastSortMs !== undefined) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div
+              style={{
+                height: '3px',
+                background: processing ? 'var(--border)' : 'transparent',
+                borderRadius: '2px',
+                overflow: 'hidden',
+              }}
+            >
+              {processing &&
+                (() => {
+                  const isGif = gifFrameCount !== undefined;
+                  const pct = isGif
+                    ? Math.round(((gifProgress ?? 0) / (gifFrameCount ?? 1)) * 100)
+                    : Math.round((sortProgress ?? 0) * 100);
+                  return (
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: 'var(--accent)',
+                        transition: 'width 0.1s linear',
+                      }}
+                    />
+                  );
+                })()}
+            </div>
+            <span style={{ color: 'var(--muted)', fontSize: '11px', textAlign: 'center' }}>
+              {processing
+                ? (() => {
+                    const isGif = gifFrameCount !== undefined;
+                    const pct = isGif
+                      ? Math.round(((gifProgress ?? 0) / (gifFrameCount ?? 1)) * 100)
+                      : Math.round((sortProgress ?? 0) * 100);
+                    const isEncoding =
+                      isGif && gifProgress !== undefined && gifProgress >= gifFrameCount;
+                    return isEncoding ? 'encoding...' : `${pct}%`;
+                  })()
+                : `sorted in ${fmtMs(lastSortMs!)}`}
+            </span>
+          </div>
+        )}
 
         <button onClick={onReset} className="btn-ghost">
           reset to defaults

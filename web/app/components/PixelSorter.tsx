@@ -7,6 +7,9 @@ import { ControlsPanel } from './ControlsPanel';
 import { ImagePane } from './ImagePane';
 import { Header } from './Header';
 import { PrivacyBanner } from './PrivacyBanner';
+import { useAnimatedGif, compositeGifFrames } from '../hooks/useAnimatedGif';
+import type { RawGifFrame } from '../hooks/useAnimatedGif';
+import { useSingleImageSort } from '../hooks/useSingleImageSort';
 
 const CANVAS_MIME: Record<string, string> = {
   'image/jpeg': 'image/jpeg',
@@ -17,9 +20,10 @@ const CANVAS_MIME: Record<string, string> = {
 const MIME_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
+  'image/gif': 'gif',
 };
 
-type SourceImage = { data: Uint8Array; width: number; height: number };
+import type { SourceImage } from '../hooks/useSingleImageSort';
 
 export default function PixelSorter() {
   const [opts, setOpts] = useState<SortOptions>(DEFAULTS);
@@ -38,17 +42,13 @@ export default function PixelSorter() {
   const [autoSort, setAutoSort] = useState(false);
   const [sliderLo, setSliderLo] = useState(DEFAULTS.lo);
   const [sliderHi, setSliderHi] = useState(DEFAULTS.hi);
+  const [lastSortMs, setLastSortMs] = useState<number | null>(null);
+  const animatedGif = useAnimatedGif(opts, lassoMask);
+  const { reset: gifReset, setGifFrames, gifFrames, run: runGif } = animatedGif;
+  const { run: runSingle, sortProgress } = useSingleImageSort(opts, lassoMask);
   const source = useRef<SourceImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const workerRef = useRef<Worker | null>(null);
   const runRef = useRef<() => void>(() => {});
-
-  useEffect(
-    () => () => {
-      workerRef.current?.terminate();
-    },
-    [],
-  );
 
   useEffect(() => {
     const check = () => setIsNarrow(window.innerWidth < 700);
@@ -66,29 +66,54 @@ export default function PixelSorter() {
     setPrivacyDismissed(true);
   };
 
-  const loadFile = useCallback((file: File) => {
-    setOutputUrl(null);
-    setFileName(file.name);
-    setMimeType(CANVAS_MIME[file.type] ?? 'image/png');
-    const url = URL.createObjectURL(file);
-    setInputUrl(url);
+  const loadFile = useCallback(
+    async (file: File) => {
+      setOutputUrl(null);
+      setFileName(file.name);
+      setLastSortMs(null);
+      gifReset();
 
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      source.current = {
-        data: new Uint8Array(imageData.data.buffer),
-        width: canvas.width,
-        height: canvas.height,
+      if (file.type === 'image/gif') {
+        const arrayBuffer = await file.arrayBuffer();
+        const { parseGIF, decompressFrames } = await import('gifuct-js');
+        const gif = parseGIF(arrayBuffer);
+        const rawFrames = decompressFrames(gif, true) as unknown as RawGifFrame[];
+
+        if (rawFrames.length > 1) {
+          const { width, height } = gif.lsd;
+          const frames = compositeGifFrames(rawFrames, width, height);
+          setGifFrames(frames);
+          setMimeType('image/gif');
+          source.current = { data: new Uint8Array(frames[0].data.buffer), width, height };
+          const url = URL.createObjectURL(file);
+          setInputUrl(url);
+          return;
+        }
+      }
+
+      // Normal single-frame path
+      setMimeType(CANVAS_MIME[file.type] ?? 'image/png');
+      const url = URL.createObjectURL(file);
+      setInputUrl(url);
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        source.current = {
+          data: new Uint8Array(imageData.data.buffer),
+          width: canvas.width,
+          height: canvas.height,
+        };
       };
-    };
-    img.src = url;
-  }, []);
+      img.src = url;
+    },
+    [gifReset, setGifFrames],
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -125,50 +150,24 @@ export default function PixelSorter() {
   const run = useCallback(() => {
     if (!source.current) return;
     setProcessing(true);
+    setLastSortMs(null);
+    const start = performance.now();
 
-    const { width, height } = source.current;
-    const data = new Uint8Array(source.current.data);
-
-    const worker = new Worker(new URL('../workers/sort.worker.ts', import.meta.url));
-    workerRef.current = worker;
-
-    worker.onmessage = ({ data: buffer }: MessageEvent<ArrayBuffer>) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.putImageData(new ImageData(new Uint8ClampedArray(buffer), width, height), 0, 0);
-
-      canvas.toBlob(blob => {
-        if (blob) {
-          if (outputUrl) URL.revokeObjectURL(outputUrl);
-          setOutputUrl(URL.createObjectURL(blob));
-        }
-        setProcessing(false);
-        worker.terminate();
-        workerRef.current = null;
-      }, mimeType);
-    };
-
-    worker.onerror = () => {
+    const finish = (blob: Blob) => {
+      if (outputUrl) URL.revokeObjectURL(outputUrl);
+      setOutputUrl(URL.createObjectURL(blob));
+      setLastSortMs(performance.now() - start);
       setProcessing(false);
-      worker.terminate();
-      workerRef.current = null;
     };
 
-    const transferables: ArrayBuffer[] = [data.buffer];
-    let maskBuffer: ArrayBuffer | undefined;
-    if (lassoMask) {
-      const copy = new Uint8Array(lassoMask);
-      maskBuffer = copy.buffer;
-      transferables.push(maskBuffer);
+    if (gifFrames) {
+      runGif(source.current.width, source.current.height)
+        .then(finish)
+        .finally(() => setProcessing(false));
+    } else {
+      runSingle(source.current, mimeType, finish, () => setProcessing(false));
     }
-
-    worker.postMessage(
-      { buffer: data.buffer, width, height, opts, mask: maskBuffer },
-      transferables,
-    );
-  }, [opts, outputUrl, mimeType, lassoMask]);
+  }, [gifFrames, runGif, runSingle, outputUrl, mimeType]);
 
   runRef.current = run;
 
@@ -236,6 +235,10 @@ export default function PixelSorter() {
           inputUrl={inputUrl}
           outputUrl={outputUrl}
           lassoPoints={lassoPoints}
+          gifFrameCount={animatedGif.gifFrames?.length}
+          gifProgress={animatedGif.gifProgress ?? undefined}
+          lastSortMs={lastSortMs ?? undefined}
+          sortProgress={sortProgress ?? undefined}
           onToggleMask={toggleMask}
           onSetMaskMode={setMaskMode}
           onSliderLoChange={setSliderLo}
