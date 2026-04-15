@@ -1,7 +1,39 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PixelSorter from '../app/components/PixelSorter';
+
+// ─── Module mocks ─────────────────────────────────────────────────────────────
+// These are hoisted before imports so dynamic `await import(...)` calls inside
+// the component pick them up.
+
+vi.mock('gifuct-js', () => ({
+  parseGIF: vi.fn(() => ({ lsd: { width: 100, height: 80 } })),
+  decompressFrames: vi.fn(() => [
+    {
+      dims: { top: 0, left: 0, width: 100, height: 80 },
+      patch: new Uint8ClampedArray(100 * 80 * 4),
+      delay: 10,
+      disposalType: 1,
+    },
+    {
+      dims: { top: 0, left: 0, width: 100, height: 80 },
+      patch: new Uint8ClampedArray(100 * 80 * 4),
+      delay: 10,
+      disposalType: 1,
+    },
+  ]),
+}));
+
+vi.mock('gifenc', () => ({
+  GIFEncoder: vi.fn(() => ({
+    writeFrame: vi.fn(),
+    finish: vi.fn(),
+    bytes: vi.fn(() => new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])),
+  })),
+  quantize: vi.fn(() => [[0, 0, 0]]),
+  applyPalette: vi.fn(() => new Uint8Array(100 * 80)),
+}));
 
 // Helper: simulate dropping a file onto an element
 function dropFile(element: HTMLElement, file: File) {
@@ -12,6 +44,11 @@ function dropFile(element: HTMLElement, file: File) {
 
 function makeImageFile(name = 'photo.jpg', type = 'image/jpeg') {
   return new File(['img'], name, { type });
+}
+
+function makeGifFile(name = 'anim.gif') {
+  // Content doesn't matter — parseGIF/decompressFrames are mocked.
+  return new File(['GIF89a'], name, { type: 'image/gif' });
 }
 
 // ─── Initial render ───────────────────────────────────────────────────────────
@@ -240,6 +277,54 @@ describe('PixelSorter — radial/spoke controls', () => {
   });
 });
 
+// ─── Animated GIF ─────────────────────────────────────────────────────────────
+
+describe('PixelSorter — animated GIF', () => {
+  it('loading an animated GIF enables the sort button', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+  });
+
+  it('sorting an animated GIF shows the download button', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('sorting an animated GIF shows the "use as input" button', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /use as input/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('the original pane is shown after an animated GIF is loaded', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByText(/original/i)).toBeInTheDocument());
+  });
+});
+
 // ─── Mask UI ──────────────────────────────────────────────────────────────────
 
 describe('PixelSorter — mask controls', () => {
@@ -304,6 +389,19 @@ describe('PixelSorter — sort flow', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
     );
+  });
+
+  it('shows sort duration after sort completes', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeImageFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+
+    await waitFor(() => expect(screen.getByText(/sorted in/i)).toBeInTheDocument());
   });
 
   it('download button is absent before first sort', async () => {
@@ -471,5 +569,53 @@ describe('PixelSorter — auto sort', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
     );
+  });
+});
+
+// ─── Animated GIF ─────────────────────────────────────────────────────────────
+
+describe('PixelSorter — animated GIF', () => {
+  it('loading an animated GIF enables the sort button', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+  });
+
+  it('sorting an animated GIF shows the download button', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('sorting an animated GIF shows the "use as input" button', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^sort$/i })).not.toBeDisabled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^sort$/i }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /use as input/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('the original pane is shown after an animated GIF is loaded', async () => {
+    render(<PixelSorter />);
+    const dropZone = screen.getByText(/drop image or click to upload/i).parentElement!;
+    await act(async () => dropFile(dropZone, makeGifFile()));
+    await waitFor(() => expect(screen.getByText(/original/i)).toBeInTheDocument());
   });
 });

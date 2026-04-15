@@ -177,7 +177,9 @@ export function sortRows(
   height: number,
   opts: SortOptions,
   pixelMask?: Uint8Array,
+  onProgress?: (fraction: number) => void,
 ): void {
+  const step = onProgress ? Math.max(1, Math.floor(height / 100)) : 0;
   for (let y = 0; y < height; y++) {
     const pixels = readRow(data, y, width);
     const rowOpts =
@@ -204,7 +206,9 @@ export function sortRows(
     }
 
     writeRow(data, y, width, sorted, opts.channel);
+    if (onProgress && (y + 1) % step === 0) onProgress((y + 1) / height);
   }
+  onProgress?.(1);
 }
 
 export function sortColumns(
@@ -213,7 +217,9 @@ export function sortColumns(
   height: number,
   opts: SortOptions,
   pixelMask?: Uint8Array,
+  onProgress?: (fraction: number) => void,
 ): void {
+  const step = onProgress ? Math.max(1, Math.floor(width / 100)) : 0;
   for (let x = 0; x < width; x++) {
     const pixels = readCol(data, x, width, height);
     const colOpts =
@@ -240,7 +246,9 @@ export function sortColumns(
     }
 
     writeCol(data, x, width, sorted, opts.channel);
+    if (onProgress && (x + 1) % step === 0) onProgress((x + 1) / width);
   }
+  onProgress?.(1);
 }
 
 /**
@@ -256,6 +264,7 @@ export function sortPolar(
   height: number,
   opts: SortOptions,
   pixelMask?: Uint8Array,
+  onProgress?: (fraction: number) => void,
 ): void {
   const cx = (opts.cx ?? 0.5) * width;
   const cy = (opts.cy ?? 0.5) * height;
@@ -288,6 +297,9 @@ export function sortPolar(
       }
     }
 
+    const total = rings.size;
+    const step = onProgress ? Math.max(1, Math.floor(total / 100)) : 0;
+    let processed = 0;
     for (const pixIndices of rings.values()) {
       pixIndices.sort((a, b) => {
         const ax = (a % width) - cx,
@@ -297,6 +309,8 @@ export function sortPolar(
         return Math.atan2(ay, ax) - Math.atan2(by, bx);
       });
       sortAndWriteStrip(data, pixIndices, opts, hasMask ? isMasked : undefined);
+      processed++;
+      if (onProgress && processed % step === 0) onProgress(processed / total);
     }
   } else {
     const maxR = Math.ceil(
@@ -320,6 +334,9 @@ export function sortPolar(
       }
     }
 
+    const total = spokes.size;
+    const step = onProgress ? Math.max(1, Math.floor(total / 100)) : 0;
+    let processed = 0;
     for (const pixIndices of spokes.values()) {
       pixIndices.sort((a, b) => {
         const ax = (a % width) - cx,
@@ -329,8 +346,11 @@ export function sortPolar(
         return ax * ax + ay * ay - (bx * bx + by * by);
       });
       sortAndWriteStrip(data, pixIndices, opts, hasMask ? isMasked : undefined);
+      processed++;
+      if (onProgress && processed % step === 0) onProgress(processed / total);
     }
   }
+  onProgress?.(1);
 }
 
 /**

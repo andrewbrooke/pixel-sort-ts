@@ -119,6 +119,8 @@ pixel-sort photo.jpg --exclude 400,200,800,600 --invert-mask
 
 A browser-based version lives in `web/`. It runs entirely client-side — images are never uploaded; all processing happens in the browser via the Canvas API.
 
+Supported formats: JPEG, PNG, WebP, and animated GIF. For animated GIFs, every frame is sorted independently and the result is re-encoded as a new animated GIF.
+
 ```bash
 cd web
 npm install
