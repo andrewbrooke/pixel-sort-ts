@@ -48,6 +48,7 @@ export function ControlsPanel({
   onRun,
   onDownload,
   onUseAsInput,
+  onPublish,
 }: {
   opts: SortOptions;
   set: <K extends keyof SortOptions>(key: K, value: SortOptions[K]) => void;
@@ -73,6 +74,7 @@ export function ControlsPanel({
   onRun: () => void;
   onDownload: () => void;
   onUseAsInput: () => void;
+  onPublish: () => void;
 }) {
   return (
     <aside
@@ -358,6 +360,9 @@ export function ControlsPanel({
             </button>
             <button onClick={onUseAsInput} className="btn-ghost">
               use as input
+            </button>
+            <button onClick={onPublish} className="btn-ghost">
+              publish to gallery
             </button>
           </>
         )}

@@ -117,7 +117,7 @@ pixel-sort photo.jpg --exclude 400,200,800,600 --invert-mask
 
 ## Web UI
 
-A browser-based version lives in `web/`. It runs entirely client-side — images are never uploaded; all processing happens in the browser via the Canvas API.
+A browser-based version lives in `web/`. Sorting runs entirely client-side via the Canvas API — images are never uploaded unless you explicitly publish to the gallery.
 
 Supported formats: JPEG, PNG, WebP, and animated GIF. For animated GIFs, every frame is sorted independently and the result is re-encoded as a new animated GIF.
 
@@ -129,6 +129,30 @@ npm run dev   # http://localhost:3000
 
 To deploy on Vercel, import the repo and set the **root directory** to `web/`.
 
+### Gallery
+
+`/gallery` is a community page where users can publish their sorted results anonymously. Images are stored in Vercel Blob; metadata and likes are stored in a Neon Postgres database.
+
+- **Publish**: sort an image, then click "publish to gallery" in the sidebar. No account needed.
+- **Delete**: the browser that uploaded an image can delete it at any time (a token is stored in `localStorage`).
+- **Likes**: any visitor can like images; state is tracked via a random `visitor_id` in `localStorage`.
+- **"Sort this"**: any gallery image can be sent straight to the sorter as a new input.
+
+#### Gallery setup (self-hosting / local dev)
+
+Create `web/.env.local` with:
+
+```
+DATABASE_URL=<Neon connection string>
+BLOB_READ_WRITE_TOKEN=<Vercel Blob token>
+```
+
+Then run the DB migration once:
+
+```bash
+npm run db:migrate
+```
+
 ### Web dev commands
 
 ```bash
@@ -138,6 +162,7 @@ npm run format        # Prettier
 npm run format:check  # Prettier check (CI)
 npm run test          # Vitest
 npm run test:watch    # Vitest watch mode
+npm run db:migrate    # Apply gallery schema to Neon DB (run once)
 ```
 
 ## CLI Development

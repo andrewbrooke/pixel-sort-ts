@@ -35,19 +35,22 @@ vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 // ─── Canvas ──────────────────────────────────────────────────────────────────
 // jsdom doesn't implement canvas. Stub getContext to return enough surface for
 // drawImage / getImageData / putImageData / toBlob calls.
-HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
-  drawImage: vi.fn(),
-  getImageData: vi.fn(() => ({
-    data: new Uint8ClampedArray(4),
-    width: 1,
-    height: 1,
-  })),
-  putImageData: vi.fn(),
-})) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+// Guard: HTMLCanvasElement is undefined in node environment (API route tests).
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+    drawImage: vi.fn(),
+    getImageData: vi.fn(() => ({
+      data: new Uint8ClampedArray(4),
+      width: 1,
+      height: 1,
+    })),
+    putImageData: vi.fn(),
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 
-HTMLCanvasElement.prototype.toBlob = vi.fn(function (this: HTMLCanvasElement, cb: BlobCallback) {
-  cb(new Blob());
-});
+  HTMLCanvasElement.prototype.toBlob = vi.fn(function (this: HTMLCanvasElement, cb: BlobCallback) {
+    cb(new Blob());
+  });
+}
 
 // jsdom doesn't define ImageData — stub it so the worker onmessage handler
 // can call new ImageData(...) without throwing.
