@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getInitialTheme, applyTheme, type Theme } from '../utils/theme';
 
-export function Header() {
+export function Header({ page = 'home' }: { page?: 'home' | 'gallery' } = {}) {
   const [theme, setTheme] = useState<Theme>('dark');
 
   useEffect(() => {
@@ -25,6 +25,25 @@ export function Header() {
       </span>
       <span style={{ color: 'var(--muted)' }}>glitch art tool</span>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {page === 'home' ? (
+          <a
+            href="/gallery"
+            style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '12px' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
+          >
+            gallery
+          </a>
+        ) : (
+          <a
+            href="/"
+            style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '12px' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
+          >
+            ← home
+          </a>
+        )}
         <button
           onClick={toggle}
           aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}

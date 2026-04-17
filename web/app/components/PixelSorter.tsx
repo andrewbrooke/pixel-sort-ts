@@ -10,6 +10,8 @@ import { PrivacyBanner } from './PrivacyBanner';
 import { useAnimatedGif, compositeGifFrames } from '../hooks/useAnimatedGif';
 import type { RawGifFrame } from '../hooks/useAnimatedGif';
 import { useSingleImageSort } from '../hooks/useSingleImageSort';
+import { PublishModal } from './PublishModal';
+import type { PublishResult } from './PublishModal';
 
 const CANVAS_MIME: Record<string, string> = {
   'image/jpeg': 'image/jpeg',
@@ -43,12 +45,14 @@ export default function PixelSorter() {
   const [sliderLo, setSliderLo] = useState(DEFAULTS.lo);
   const [sliderHi, setSliderHi] = useState(DEFAULTS.hi);
   const [lastSortMs, setLastSortMs] = useState<number | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
   const animatedGif = useAnimatedGif(opts, lassoMask);
   const { reset: gifReset, setGifFrames, gifFrames, run: runGif } = animatedGif;
   const { run: runSingle, sortProgress } = useSingleImageSort(opts, lassoMask);
   const source = useRef<SourceImage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const runRef = useRef<() => void>(() => {});
+  const imageUrlConsumed = useRef(false);
 
   useEffect(() => {
     const check = () => setIsNarrow(window.innerWidth < 700);
@@ -114,6 +118,23 @@ export default function PixelSorter() {
     },
     [gifReset, setGifFrames],
   );
+
+  // Load an image passed via ?imageUrl= (e.g. from the gallery "sort this" link)
+  useEffect(() => {
+    if (imageUrlConsumed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const imageUrl = params.get('imageUrl');
+    if (!imageUrl) return;
+    imageUrlConsumed.current = true;
+    window.history.replaceState({}, '', '/');
+    fetch(imageUrl)
+      .then(r => r.blob())
+      .then(blob => {
+        const filename = imageUrl.split('/').pop() ?? 'gallery.png';
+        loadFile(new File([blob], filename, { type: blob.type || 'image/png' }));
+      })
+      .catch(console.error);
+  }, [loadFile]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -210,6 +231,10 @@ export default function PixelSorter() {
     loadFile(new File([blob], `${base}_sorted.${ext}`, { type: blob.type }));
   }, [outputUrl, fileName, mimeType, loadFile]);
 
+  const handlePublished = useCallback((result: PublishResult) => {
+    localStorage.setItem(`gallery-delete-${result.imageId}`, result.deleteToken);
+  }, []);
+
   return (
     <div
       style={{
@@ -256,6 +281,7 @@ export default function PixelSorter() {
           onRun={run}
           onDownload={download}
           onUseAsInput={useOutputAsInput}
+          onPublish={() => setPublishOpen(true)}
         />
 
         {/* Preview area */}
@@ -366,6 +392,16 @@ export default function PixelSorter() {
       </div>
 
       {!privacyDismissed && <PrivacyBanner onDismiss={dismissPrivacy} />}
+
+      {publishOpen && outputUrl && (
+        <PublishModal
+          outputUrl={outputUrl}
+          mimeType={mimeType}
+          sortParams={opts}
+          onClose={() => setPublishOpen(false)}
+          onPublished={handlePublished}
+        />
+      )}
     </div>
   );
 }

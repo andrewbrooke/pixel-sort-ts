@@ -17,7 +17,8 @@ export function PrivacyBanner({ onDismiss }: { onDismiss: () => void }) {
       }}
     >
       <span>
-        Your images never leave your device — all processing happens locally in your browser.
+        Your images never leave your device unless you choose to publish them — all processing
+        happens locally in your browser.
       </span>
       <button
         onClick={onDismiss}
