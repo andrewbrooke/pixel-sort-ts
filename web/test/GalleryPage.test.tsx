@@ -33,20 +33,22 @@ describe('GalleryPage — render', () => {
     mockFetch([MOCK_IMAGE]);
   });
 
-  it('renders gallery title', () => {
+  it('renders gallery title', async () => {
     render(<GalleryPage />);
-    expect(screen.getByText('community results')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('community results')).toBeInTheDocument());
   });
 
-  it('renders top and new filter tabs', () => {
+  it('renders top and new filter tabs', async () => {
     render(<GalleryPage />);
-    expect(screen.getByRole('button', { name: /▲ top/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /● new/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /▲ top/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /● new/i })).toBeInTheDocument();
+    });
   });
 
-  it('renders the pixel-sort header with theme toggle', () => {
+  it('renders the pixel-sort header with theme toggle', async () => {
     render(<GalleryPage />);
-    expect(screen.getByText('pixel-sort')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('pixel-sort')).toBeInTheDocument());
   });
 });
 
@@ -76,6 +78,7 @@ describe('GalleryPage — data fetching', () => {
   });
 
   it('shows loading state initially', () => {
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(() => {})); // never resolves
     render(<GalleryPage />);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });

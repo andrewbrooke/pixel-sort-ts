@@ -139,6 +139,19 @@ describe('POST /api/gallery/upload', () => {
     ).toBe(400);
   });
 
+  it('returns 415 for disallowed file type', async () => {
+    const fd = new FormData();
+    fd.append('sorted', new Blob(['<html>'], { type: 'text/html' }), 'evil.html');
+    fd.append('sortParams', SORT_PARAMS);
+    expect(
+      (
+        await upload(
+          new NextRequest('http://localhost/api/gallery/upload', { method: 'POST', body: fd }),
+        )
+      ).status,
+    ).toBe(415);
+  });
+
   it('returns 400 for malformed sortParams JSON', async () => {
     expect((await upload(uploadRequest({ sortParams: 'not-json' }))).status).toBe(400);
   });

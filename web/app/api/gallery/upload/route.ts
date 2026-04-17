@@ -4,6 +4,7 @@ import { insertImage } from '../../../../lib/db';
 import { randomUUID } from 'crypto';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -14,6 +15,10 @@ export async function POST(req: NextRequest) {
 
   if (!sortedFile || !sortParamsRaw) {
     return NextResponse.json({ error: 'missing fields' }, { status: 400 });
+  }
+
+  if (!ALLOWED_TYPES.has(sortedFile.type)) {
+    return NextResponse.json({ error: 'unsupported file type' }, { status: 415 });
   }
 
   if (sortedFile.size > MAX_BYTES) {
